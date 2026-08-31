@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GMIT",
+  label: "GMIT",
   description: "The home base of active management for the global markets investment team. Bringing tailored alerts and detailed company insights.",
 };
 
