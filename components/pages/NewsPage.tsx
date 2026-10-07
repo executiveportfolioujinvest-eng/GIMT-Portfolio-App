@@ -8,13 +8,16 @@ import {getGoogleNews, getMarketNews, getNewsForStocks} from "@/lib/actions/news
 import {getHoldingStocks} from "@/lib/actions/portfolio.actions";
 import {getWatchlistWithData} from "@/lib/actions/watchlist.actions";
 import {TOP_STORIES_WIDGET_CONFIG} from "@/lib/constants";
-import {marketHref, MARKETS, type MarketKey} from "@/lib/markets";
+import {isExecutiveRole, marketHref, MARKETS, type MarketKey} from "@/lib/markets";
+import {getSessionUser} from "@/lib/better-auth/session";
 
 // Every news source in the app in one place: Finnhub, Google News, TradingView,
 // plus news for the user's portfolio holdings and watchlist
 const NewsPage = async ({ market }: { market: MarketKey }) => {
     const other: MarketKey = market === 'global' ? 'local' : 'global';
     const config = MARKETS[market];
+    // Only the executives can cross over to the other department's section
+    const canSwitch = isExecutiveRole((await getSessionUser())?.teamRole);
 
     const [top, home, world, holdings, watchlist, economy] = await Promise.all([
         getMarketNews('top', market, 15),
@@ -34,13 +37,13 @@ const NewsPage = async ({ market }: { market: MarketKey }) => {
     const tabs = market === 'global'
         ? [
             { key: 'top' as const, label: 'Top stories' },
-            { label: 'Local market', href: marketHref('local', '/news') },
+            ...(canSwitch ? [{ label: 'Local market', href: marketHref('local', '/news') }] : []),
             { key: 'world' as const, label: 'Global markets' },
         ]
         : [
             { key: 'top' as const, label: 'Top stories' },
             { key: 'local' as const, label: 'Local market' },
-            { label: 'Global markets', href: marketHref('global', '/news') },
+            ...(canSwitch ? [{ label: 'Global markets', href: marketHref('global', '/news') }] : []),
         ];
 
     return (
@@ -50,9 +53,11 @@ const NewsPage = async ({ market }: { market: MarketKey }) => {
                     <h1 className="text-3xl font-bold text-gray-100">News</h1>
                     <p className="mt-1 text-gray-500">{config.teamName} ({config.team})</p>
                 </div>
-                <Link href={marketHref(other, '/news')} className="dash-view-all">
-                    {MARKETS[other].teamName} news &rarr;
-                </Link>
+                {canSwitch && (
+                    <Link href={marketHref(other, '/news')} className="dash-view-all">
+                        {MARKETS[other].teamName} news &rarr;
+                    </Link>
+                )}
             </div>
 
             <div className="grid grid-cols-1 gap-8 xl:grid-cols-3">

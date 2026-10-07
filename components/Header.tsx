@@ -5,11 +5,13 @@ import MobileNav from "@/components/MobileNav";
 import RollText from "@/components/RollText";
 import HomeLink from "@/components/HomeLink";
 import {searchStocks} from "@/lib/actions/finnhub.actions";
+import {canAccessMarket} from "@/lib/markets";
 
 const Header = async ({ user }: { user: User }) => {
+    // Only load search lists for the sections this member can open
     const [initialStocks, initialLocalStocks] = await Promise.all([
-        searchStocks(),
-        searchStocks(undefined, 'local'),
+        canAccessMarket(user, 'global') ? searchStocks() : Promise.resolve([]),
+        canAccessMarket(user, 'local') ? searchStocks(undefined, 'local') : Promise.resolve([]),
     ]);
 
     return (

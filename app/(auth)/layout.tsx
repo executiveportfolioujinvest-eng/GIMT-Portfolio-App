@@ -1,12 +1,14 @@
 import Link from "next/link";
 import Image from "next/image";
-import {auth} from "@/lib/better-auth/auth";
+import {getAuth} from "@/lib/better-auth/auth";
 import {headers} from "next/headers";
 import {redirect} from "next/navigation";
 import {marketForDepartment, marketHref} from "@/lib/markets";
 
 const Layout = async ({ children }: { children : React.ReactNode }) => {
-    const session = await auth.api.getSession({ headers: await headers() })
+    // Read the request first: it marks the page as per-request, so builds never touch the database
+    const requestHeaders = await headers()
+    const session = await (await getAuth()).api.getSession({ headers: requestHeaders })
 
     if(session?.user) redirect(marketHref(marketForDepartment((session.user as { department?: string }).department), '/'))
 

@@ -1,9 +1,13 @@
+import { cache } from "react";
 import { headers } from "next/headers";
-import { auth } from "@/lib/better-auth/auth";
+import { getAuth } from "@/lib/better-auth/auth";
 
-// Signed-in user for the current request, or null when signed out
-export const getSessionUser = async (): Promise<User | null> => {
-    const session = await auth.api.getSession({ headers: await headers() });
+// Signed-in user for the current request, or null when signed out (looked up once per request)
+export const getSessionUser = cache(async (): Promise<User | null> => {
+    // Read the request first: it marks the page as per-request, so builds never touch the database
+    const requestHeaders = await headers();
+    const auth = await getAuth();
+    const session = await auth.api.getSession({ headers: requestHeaders });
     if (!session?.user) return null;
 
     return {
@@ -13,4 +17,4 @@ export const getSessionUser = async (): Promise<User | null> => {
         department: session.user.department === 'local' ? 'local' : 'global',
         teamRole: session.user.teamRole as TeamRole | undefined,
     };
-}
+});

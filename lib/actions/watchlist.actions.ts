@@ -8,7 +8,7 @@ import { getWatchlistSymbolsForUser, marketFilter } from '@/database/queries';
 import { getSessionUser } from '@/lib/better-auth/session';
 import { getStockSnapshots } from '@/lib/actions/market.actions';
 import { formatChangePercent, formatMarketCapValue, formatPrice } from '@/lib/utils';
-import { isMarketKey, marketHref, type MarketKey } from '@/lib/markets';
+import { canAccessMarket, isMarketKey, marketHref, type MarketKey } from '@/lib/markets';
 
 export async function getWatchlistSymbolsByEmail(email: string, market: MarketKey = 'global'): Promise<string[]> {
   if (!email) return [];
@@ -38,7 +38,7 @@ export async function getWatchlistSymbolsByEmail(email: string, market: MarketKe
 export async function getUserWatchlistSymbols(market: MarketKey = 'global'): Promise<string[]> {
   try {
     const user = await getSessionUser();
-    if (!user) return [];
+    if (!user || !canAccessMarket(user, market)) return [];
 
     return await getWatchlistSymbolsForUser(user.id, market);
   } catch (err) {
@@ -63,7 +63,7 @@ export async function addToWatchlist(symbol: string, company: string, market: Ma
   try {
     const user = await getSessionUser();
     if (!user) return { success: false, error: 'You need to be signed in' };
-    if (!isMarketKey(market)) return { success: false, error: 'Invalid market' };
+    if (!isMarketKey(market) || !canAccessMarket(user, market)) return { success: false, error: "You don't have access to that department" };
 
     const cleanSymbol = symbol.trim().toUpperCase();
     if (!cleanSymbol) return { success: false, error: 'Invalid symbol' };
@@ -89,7 +89,7 @@ export async function removeFromWatchlist(symbol: string, market: MarketKey = 'g
   try {
     const user = await getSessionUser();
     if (!user) return { success: false, error: 'You need to be signed in' };
-    if (!isMarketKey(market)) return { success: false, error: 'Invalid market' };
+    if (!isMarketKey(market) || !canAccessMarket(user, market)) return { success: false, error: "You don't have access to that department" };
 
     await connectToDatabase();
     await Watchlist.deleteOne({ userId: user.id, symbol: symbol.trim().toUpperCase(), ...marketFilter(market) });
@@ -108,7 +108,7 @@ export async function removeFromWatchlist(symbol: string, market: MarketKey = 'g
 export async function getWatchlistWithData(market: MarketKey = 'global'): Promise<StockWithData[]> {
   try {
     const user = await getSessionUser();
-    if (!user) return [];
+    if (!user || !canAccessMarket(user, market)) return [];
 
     await connectToDatabase();
     const items = await Watchlist.find({ userId: user.id, ...marketFilter(market) }).sort({ addedAt: -1 }).lean();

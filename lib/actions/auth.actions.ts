@@ -1,11 +1,11 @@
 'use server';
 
-import {auth} from "@/lib/better-auth/auth";
+import {getAuth} from "@/lib/better-auth/auth";
 import {inngest} from "@/lib/inngest/client";
 import {headers} from "next/headers";
 import {APIError} from "better-auth/api";
 import {connectToDatabase} from "@/database/mongoose";
-import {EXECUTIVE_ROLES, marketForDepartment, marketHref} from "@/lib/markets";
+import {LEADERSHIP_ROLES, marketForDepartment, marketHref} from "@/lib/markets";
 
 // Each department lands on its own dashboard after signing in
 const homeForDepartment = (department?: string | null) => marketHref(marketForDepartment(department), '/');
@@ -16,6 +16,7 @@ const authErrorMessage = (e: unknown, fallback: string) =>
 
 export const signUpWithEmail = async ({ email, password, fullName, department, teamRole, country, investmentGoals, riskTolerance, preferredIndustry }: SignUpFormData) => {
     try {
+        const auth = await getAuth();
         const response = await auth.api.signUpEmail({ body: { email, password, name: fullName, department, teamRole } })
 
         if(response) {
@@ -35,6 +36,7 @@ export const signUpWithEmail = async ({ email, password, fullName, department, t
 
 export const signInWithEmail = async ({ email, password }: SignInFormData) => {
     try {
+        const auth = await getAuth();
         const response = await auth.api.signInEmail({ body: { email, password } })
 
         return { success: true, data: response, home: homeForDepartment((response.user as { department?: string }).department) }
@@ -46,6 +48,7 @@ export const signInWithEmail = async ({ email, password }: SignInFormData) => {
 
 export const signOut = async () => {
     try {
+        const auth = await getAuth();
         await auth.api.signOut({ headers: await headers() });
     } catch (e) {
         console.log('Sign out failed', e)
@@ -53,17 +56,17 @@ export const signOut = async () => {
     }
 }
 
-// Executive portfolio manager roles that already have someone in them, so sign-up can hide them
-export const getFilledExecutiveRoles = async (): Promise<TeamRole[]> => {
+// Executive and deputy portfolio manager roles that already have someone in them, so sign-up can hide them
+export const getFilledLeadershipRoles = async (): Promise<TeamRole[]> => {
     try {
         const mongoose = await connectToDatabase();
         const db = mongoose.connection.db;
         if (!db) return [];
 
-        const filled = await db.collection('user').distinct('teamRole', { teamRole: { $in: Object.values(EXECUTIVE_ROLES) } });
+        const filled = await db.collection('user').distinct('teamRole', { teamRole: { $in: LEADERSHIP_ROLES } });
         return filled as TeamRole[];
     } catch (e) {
-        console.error('Failed to load filled executive roles', e);
+        console.error('Failed to load filled leadership roles', e);
         return [];
     }
 }

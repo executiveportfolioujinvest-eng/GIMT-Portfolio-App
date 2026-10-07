@@ -4,6 +4,7 @@ import LocalHeatmap from "@/components/local/LocalHeatmap";
 import LocalQuotesTable from "@/components/local/LocalQuotesTable";
 import NewsList from "@/components/dashboard/NewsList";
 import DashboardSections, {DashboardSectionsSkeleton} from "@/components/dashboard/DashboardSections";
+import MarketSwitcher from "@/components/MarketSwitcher";
 import {getJseQuotes, getPriceHistory} from "@/lib/actions/yahoo.actions";
 import {getMarketNews} from "@/lib/actions/news.actions";
 import {LOCAL_OVERVIEW_TABS, LOCAL_STOCKS} from "@/lib/markets";
@@ -20,6 +21,7 @@ const LocalDashboardPage = async () => {
 
     return (
         <div className="w-full">
+            <MarketSwitcher market="local" path="/" />
             <div className="flex min-h-screen home-wrapper">
                 <section className="grid w-full gap-8 home-section">
                     <div className="md:col-span-1 xl:col-span-1">

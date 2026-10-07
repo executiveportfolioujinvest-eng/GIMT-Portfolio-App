@@ -174,15 +174,23 @@ export const DEPARTMENT_OPTIONS: { value: MarketKey; label: string }[] = [
     { value: 'local', label: 'Local Markets Department' },
 ];
 
-// Each department has exactly one executive portfolio manager, who heads its sub-committee
+// Each department has exactly one executive portfolio manager, who heads its sub-committee,
+// and one deputy portfolio manager
 export const EXECUTIVE_ROLES: Record<MarketKey, TeamRole> = {
     global: 'executive_global_pm',
     local: 'executive_local_pm',
 };
 
+export const DEPUTY_ROLES: Record<MarketKey, TeamRole> = {
+    global: 'deputy_global_pm',
+    local: 'deputy_local_pm',
+};
+
 export const ROLE_OPTIONS: { value: TeamRole; label: string }[] = [
     { value: 'executive_global_pm', label: 'Executive Global Markets Portfolio Manager' },
     { value: 'executive_local_pm', label: 'Executive Local Markets Portfolio Manager' },
+    { value: 'deputy_global_pm', label: 'Deputy Global Markets Portfolio Manager' },
+    { value: 'deputy_local_pm', label: 'Deputy Local Markets Portfolio Manager' },
     { value: 'investment_analyst', label: 'Investment Analyst' },
     { value: 'equity_analyst', label: 'Equity Analyst' },
     { value: 'quantitative_analyst', label: 'Quantitative Analyst' },
@@ -197,9 +205,31 @@ export const isTeamRole = (value: unknown): value is TeamRole => ROLE_OPTIONS.so
 
 export const isExecutiveRole = (role: unknown): boolean => Object.values(EXECUTIVE_ROLES).includes(role as TeamRole);
 
-// The department an executive role belongs to (sub-committee roles belong to either)
-export const departmentForExecutive = (role: unknown): MarketKey | null =>
-    (Object.keys(EXECUTIVE_ROLES) as MarketKey[]).find((d) => EXECUTIVE_ROLES[d] === role) ?? null;
+// Executive and deputy seats: one of each per department
+export const LEADERSHIP_ROLES: TeamRole[] = [...Object.values(EXECUTIVE_ROLES), ...Object.values(DEPUTY_ROLES)];
+
+export const isLeadershipRole = (role: unknown): boolean => LEADERSHIP_ROLES.includes(role as TeamRole);
+
+// The department a leadership role belongs to (sub-committee roles belong to either)
+export const departmentForLeadershipRole = (role: unknown): MarketKey | null =>
+    (['global', 'local'] as MarketKey[]).find((d) => EXECUTIVE_ROLES[d] === role || DEPUTY_ROLES[d] === role) ?? null;
+
+export const roleLabel = (role?: string | null) => ROLE_OPTIONS.find((r) => r.value === role)?.label ?? 'Team member';
+
+type TeamMember = { department?: string | null; teamRole?: string | null } | null | undefined;
+
+// Members only see their own department's section; the two executives can switch between both
+export const canAccessMarket = (user: TeamMember, market: MarketKey): boolean =>
+    !!user && (marketForDepartment(user.department) === market || isExecutiveRole(user.teamRole));
+
+// What a member may do with a department's team portfolio ('observer' is the other department's executive: view only)
+export const portfolioAuthority = (user: TeamMember, market: MarketKey): PortfolioAuthority | null => {
+    if (!user) return null;
+    if (marketForDepartment(user.department) !== market) return isExecutiveRole(user.teamRole) ? 'observer' : null;
+    if (user.teamRole === EXECUTIVE_ROLES[market]) return 'executive';
+    if (user.teamRole === DEPUTY_ROLES[market]) return 'deputy';
+    return 'member';
+};
 
 // Users land on their own department's dashboard
 export const marketForDepartment = (department?: string | null): MarketKey => (department === 'local' ? 'local' : 'global');

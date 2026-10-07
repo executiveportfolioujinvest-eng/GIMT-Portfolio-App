@@ -4,12 +4,14 @@ import {MARKET_OVERVIEW_WIDGET_CONFIG, HEATMAP_WIDGET_CONFIG, TOP_STORIES_WIDGET
 import TickerTape from "@/components/TickerTape";
 import {Suspense} from "react";
 import DashboardSections, {DashboardSectionsSkeleton} from "@/components/dashboard/DashboardSections";
+import MarketSwitcher from "@/components/MarketSwitcher";
 
 
 const Home = () => {
     const scriptUrl = `https://s3.tradingview.com/external-embedding/embed-widget-`
     return (
         <div className="w-full">
+        <MarketSwitcher market="global" path="/" />
         <div className="flex min-h-screen home-wrapper">
            <section className="grid w-full gap-8 home-section">
                <div className="md:col-span-1 xl:col-span-1">

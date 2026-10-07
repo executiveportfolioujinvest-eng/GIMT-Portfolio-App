@@ -7,7 +7,7 @@ import { AlertModel } from '@/database/models/alert.model';
 import { marketFilter } from '@/database/queries';
 import { getSessionUser } from '@/lib/better-auth/session';
 import { getStockSnapshots } from '@/lib/actions/market.actions';
-import { isMarketKey, marketHref, MARKETS, type MarketKey } from '@/lib/markets';
+import { canAccessMarket, isMarketKey, marketHref, MARKETS, type MarketKey } from '@/lib/markets';
 
 const FREQUENCIES: AlertFrequency[] = ['once_per_minute', 'once_per_hour', 'once_per_day'];
 
@@ -39,6 +39,7 @@ export async function createAlert(data: AlertData) {
     if (!user) return { success: false, error: 'You need to be signed in' };
 
     const values = parseAlertData(data);
+    if (!canAccessMarket(user, values.market)) return { success: false, error: "You don't have access to that department" };
     await connectToDatabase();
     await AlertModel.create({ ...values, userId: user.id });
 
@@ -58,6 +59,7 @@ export async function updateAlert(alertId: string, data: AlertData) {
     if (!user) return { success: false, error: 'You need to be signed in' };
 
     const values = parseAlertData(data);
+    if (!canAccessMarket(user, values.market)) return { success: false, error: "You don't have access to that department" };
     await connectToDatabase();
     const result = await AlertModel.updateOne(
       { _id: alertId, userId: user.id },
@@ -98,7 +100,7 @@ export async function deleteAlert(alertId: string) {
 export async function getUserAlerts(market: MarketKey = 'global'): Promise<Alert[]> {
   try {
     const user = await getSessionUser();
-    if (!user) return [];
+    if (!user || !canAccessMarket(user, market)) return [];
 
     await connectToDatabase();
     const alerts = await AlertModel.find({ userId: user.id, ...marketFilter(market) }).sort({ createdAt: -1 }).lean();

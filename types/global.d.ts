@@ -6,6 +6,8 @@ declare global {
     type TeamRole =
         | 'executive_global_pm'
         | 'executive_local_pm'
+        | 'deputy_global_pm'
+        | 'deputy_local_pm'
         | 'investment_analyst'
         | 'equity_analyst'
         | 'quantitative_analyst'
@@ -280,6 +282,54 @@ declare global {
         gain?: number;
         gainPercent?: number;
         currency: string;
+    };
+
+    type PortfolioAuthority = 'executive' | 'deputy' | 'member' | 'observer';
+
+    type ProposalAction = 'add' | 'edit' | 'remove';
+
+    // pending -> (delegated -> deputy signs) | (co_authorized -> executive signs) | executive signs -> executed
+    type ProposalStatus = 'pending' | 'delegated' | 'co_authorized' | 'executed' | 'rejected' | 'cancelled';
+
+    type ProposalSigner = {
+        id: string;
+        name: string;
+        at: string;
+    };
+
+    type ProposalView = {
+        id: string;
+        market: MarketKey;
+        action: ProposalAction;
+        symbol: string;
+        company: string;
+        shares?: number;
+        buyPrice?: number;
+        previousShares?: number;
+        previousBuyPrice?: number;
+        note?: string;
+        status: ProposalStatus;
+        proposedBy: ProposalSigner & { role: string };
+        delegatedBy?: ProposalSigner;
+        coAuthorizedBy?: ProposalSigner;
+        approvedBy?: ProposalSigner;
+        rejectedBy?: ProposalSigner & { reason?: string };
+        currency: string;
+        // What the signed-in viewer may do with this request
+        canApprove: boolean;
+        canDelegate: boolean;
+        canCoAuthorize: boolean;
+        canReject: boolean;
+        canCancel: boolean;
+    };
+
+    type TeamPortfolioView = {
+        allowed: boolean;
+        authority: PortfolioAuthority | null;
+        holdings: HoldingWithData[];
+        summary: PortfolioSummary;
+        pending: ProposalView[];
+        history: ProposalView[];
     };
 
     type PortfolioSummary = {

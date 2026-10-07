@@ -6,10 +6,10 @@ import {Button} from "@/components/ui/button";
 import InputField from "@/components/forms/InputField";
 import SelectField from "@/components/forms/SelectField";
 import {INVESTMENT_GOALS, PREFERRED_INDUSTRIES, RISK_TOLERANCE_OPTIONS} from "@/lib/constants";
-import {departmentForExecutive, DEPARTMENT_OPTIONS, ROLE_OPTIONS} from "@/lib/markets";
+import {departmentForLeadershipRole, DEPARTMENT_OPTIONS, ROLE_OPTIONS} from "@/lib/markets";
 import {CountrySelectField} from "@/components/forms/CountrySelectField";
 import FooterLink from "@/components/forms/FooterLink";
-import {getFilledExecutiveRoles, signUpWithEmail} from "@/lib/actions/auth.actions";
+import {getFilledLeadershipRoles, signUpWithEmail} from "@/lib/actions/auth.actions";
 import {useRouter} from "next/navigation";
 import {toast} from "sonner";
 
@@ -37,20 +37,20 @@ const SignUp = () => {
         mode: 'onBlur'
     });
 
-    // Executive portfolio manager seats that are already taken aren't offered
-    const [filledExecutives, setFilledExecutives] = useState<TeamRole[]>([]);
+    // Executive and deputy portfolio manager seats that are already taken aren't offered
+    const [filledSeats, setFilledSeats] = useState<TeamRole[]>([]);
     useEffect(() => {
-        getFilledExecutiveRoles().then(setFilledExecutives).catch(() => setFilledExecutives([]));
+        getFilledLeadershipRoles().then(setFilledSeats).catch(() => setFilledSeats([]));
     }, []);
 
     const department = useWatch({ control, name: 'department' });
     const roleOptions = useMemo(() => ROLE_OPTIONS.filter((role) => {
-        const executiveOf = departmentForExecutive(role.value);
-        if (!executiveOf) return true;
-        if (filledExecutives.includes(role.value)) return false;
-        // Only the chosen department's executive role is offered
-        return !department || executiveOf === department;
-    }), [department, filledExecutives]);
+        const seatOf = departmentForLeadershipRole(role.value);
+        if (!seatOf) return true;
+        if (filledSeats.includes(role.value)) return false;
+        // Only the chosen department's executive and deputy roles are offered
+        return !department || seatOf === department;
+    }), [department, filledSeats]);
 
     // Clear a role that no longer fits after the department changes
     useEffect(() => {
