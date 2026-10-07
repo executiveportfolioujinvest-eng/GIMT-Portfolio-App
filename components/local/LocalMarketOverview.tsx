@@ -4,16 +4,16 @@ import {useEffect, useMemo, useRef, useState, useTransition} from "react";
 import PriceChart from "@/components/charts/PriceChart";
 import StockLogo from "@/components/StockLogo";
 import {getPriceHistory} from "@/lib/actions/yahoo.actions";
-import {LOCAL_OVERVIEW_TABS, LOCAL_STOCKS} from "@/lib/markets";
+import {LOCAL_OVERVIEW_TABS, type LocalStock} from "@/lib/markets";
 import {cn, formatChangePercent, formatChangeValue, formatPrice, getChangeColorClass} from "@/lib/utils";
 
 const RANGES: HistoryRange[] = ['1D', '1M', '1Y', '5Y'];
-const TABS = LOCAL_OVERVIEW_TABS;
-
 // JSE take on TradingView's Market Overview widget: sector tabs, a price chart and the sector's stocks
-const LocalMarketOverview = ({ quotes, initialHistory }: { quotes: Record<string, MarketQuote | null>; initialHistory: PriceHistory }) => {
+const LocalMarketOverview = ({ stocks: allStocks, quotes, initialHistory }: { stocks: LocalStock[]; quotes: Record<string, MarketQuote | null>; initialHistory: PriceHistory }) => {
+    // Sector tabs with no stocks in the administrator's JSE list are left out
+    const TABS = useMemo(() => LOCAL_OVERVIEW_TABS.filter((t) => allStocks.some((s) => t.sectors.includes(s.sector))), [allStocks]);
     const [tabIndex, setTabIndex] = useState(0);
-    const stocks = useMemo(() => LOCAL_STOCKS.filter((s) => TABS[tabIndex].sectors.includes(s.sector)), [tabIndex]);
+    const stocks = useMemo(() => allStocks.filter((s) => TABS[tabIndex].sectors.includes(s.sector)), [allStocks, TABS, tabIndex]);
     const [selected, setSelected] = useState(stocks[0].symbol);
     const [range, setRange] = useState<HistoryRange>('1Y');
     const [points, setPoints] = useState<PricePoint[]>(initialHistory.points);
@@ -33,7 +33,7 @@ const LocalMarketOverview = ({ quotes, initialHistory }: { quotes: Record<string
 
     const selectTab = (index: number) => {
         setTabIndex(index);
-        setSelected(LOCAL_STOCKS.find((s) => TABS[index].sectors.includes(s.sector))!.symbol);
+        setSelected(allStocks.find((s) => TABS[index].sectors.includes(s.sector))!.symbol);
     };
 
     return (

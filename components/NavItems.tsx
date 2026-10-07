@@ -11,10 +11,12 @@ import {marketFromPathname, marketHref} from "@/lib/markets";
 type NavItemsProps = {
     initialStocks: StockWithWatchlistStatus[];
     initialLocalStocks: StockWithWatchlistStatus[];
+    // Administrators also get a link to their console
+    showAdmin?: boolean;
     className?: string;
 };
 
-const NavItems = ({ initialStocks, initialLocalStocks, className }: NavItemsProps) => {
+const NavItems = ({ initialStocks, initialLocalStocks, showAdmin = false, className }: NavItemsProps) => {
     const pathname = usePathname()
     // Links stay inside the Local Markets (LIMT) section while you're in it
     const market = marketFromPathname(pathname)
@@ -55,6 +57,19 @@ const NavItems = ({ initialStocks, initialLocalStocks, className }: NavItemsProp
                     </Link>
                 </li>
             })}
+            {showAdmin && (
+                <li>
+                    <Link
+                        href="/admin"
+                        className="nav-link"
+                        aria-label="Admin"
+                        data-active={pathname.startsWith('/admin')}
+                        aria-current={pathname.startsWith('/admin') ? 'page' : undefined}
+                    >
+                        <NavLinkContent label="Admin" />
+                    </Link>
+                </li>
+            )}
         </ul>
     )
 }

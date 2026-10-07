@@ -3,7 +3,7 @@
 import {useEffect, useRef, useState, useTransition} from "react";
 import PriceChart from "@/components/charts/PriceChart";
 import {getPriceHistory, getYahooQuotes} from "@/lib/actions/yahoo.actions";
-import {MARKETS, type MarketKey} from "@/lib/markets";
+import type {MarketKey, SummaryTab} from "@/lib/markets";
 import {cn, formatChangePercent, formatPrice, getChangeColorClass} from "@/lib/utils";
 
 const RANGES: HistoryRange[] = ['1D', '5D', '1M', '6M', '1Y', '5Y'];
@@ -20,12 +20,13 @@ const formatLevel = (quote: MarketQuote | null | undefined, symbol: string) => {
 
 type MarketSummaryProps = {
     market: MarketKey;
+    // The department's tabs, as the administrator set them (or the defaults)
+    tabs: SummaryTab[];
     initialHistory: PriceHistory;
     initialQuotes: (MarketQuote | null)[];
 };
 
-const MarketSummary = ({ market, initialHistory, initialQuotes }: MarketSummaryProps) => {
-    const tabs = MARKETS[market].summaryTabs;
+const MarketSummary = ({ tabs, initialHistory, initialQuotes }: MarketSummaryProps) => {
     const [tabIndex, setTabIndex] = useState(0);
     const [symbolIndex, setSymbolIndex] = useState(0);
     const [range, setRange] = useState<HistoryRange>('1D');

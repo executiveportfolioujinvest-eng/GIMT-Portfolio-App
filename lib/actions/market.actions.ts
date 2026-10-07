@@ -9,13 +9,12 @@ import {
   getStockQuote,
 } from '@/lib/actions/finnhub.actions';
 import { getYahooQuote, searchJseStocks } from '@/lib/actions/yahoo.actions';
-import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
-import { LOCAL_STOCKS, MARKETS, type MarketKey } from '@/lib/markets';
+import { MARKETS, type MarketKey } from '@/lib/markets';
+import { findLocalStock, getDashboardConfig, getLocalStocks } from '@/lib/dashboard-config';
 
 const toYahooSymbol = (market: MarketKey, symbol: string) =>
   market === 'local' && !symbol.includes('.') && !symbol.startsWith('^') ? `${symbol}.JO` : symbol;
 
-const localStock = (symbol: string) => LOCAL_STOCKS.find((s) => s.symbol === symbol.toUpperCase());
 
 const ratingFromTrend = (trend: RecommendationTrend | null): string | undefined => {
   if (!trend) return undefined;
@@ -56,7 +55,7 @@ export async function getStockSnapshots(market: MarketKey, stocks: { symbol: str
         const quote = await getYahooQuote(toYahooSymbol(market, upper));
         return {
           symbol: upper,
-          company: company || localStock(upper)?.name || quote?.name || upper,
+          company: company || (await findLocalStock(upper))?.name || quote?.name || upper,
           price: quote?.price,
           change: quote?.change,
           changePercent: quote?.changePercent,
@@ -87,10 +86,13 @@ export async function getStockSnapshots(market: MarketKey, stocks: { symbol: str
 }
 
 // Today's Top Stocks on the dashboard
-export async function getTopStocks(market: MarketKey, count = 10): Promise<StockSnapshot[]> {
-  const symbols = market === 'local'
-    ? LOCAL_STOCKS.slice(0, count).map((s) => ({ symbol: s.symbol, company: s.name }))
-    : POPULAR_STOCK_SYMBOLS.slice(0, count).map((symbol) => ({ symbol }));
+// (the administrator's list for the department, or the defaults)
+export async function getTopStocks(market: MarketKey): Promise<StockSnapshot[]> {
+  const { topStocks, localStocks } = await getDashboardConfig(market);
+  const symbols = topStocks.map((symbol) => ({
+    symbol,
+    company: market === 'local' ? localStocks.find((s) => s.symbol === symbol)?.name : undefined,
+  }));
   return getStockSnapshots(market, symbols);
 }
 
@@ -100,16 +102,17 @@ export async function getStockOverview(market: MarketKey, symbol: string): Promi
   const currency = MARKETS[market].currency;
 
   if (market === 'local') {
-    const known = localStock(upper);
+    const known = await findLocalStock(upper);
     const [quote, search] = await Promise.all([
       getYahooQuote(toYahooSymbol(market, upper)),
       known ? Promise.resolve([]) : searchJseStocks(upper),
     ]);
     const searched = search.find((s) => s.symbol === upper);
     const sector = known?.sector || searched?.type;
-    const peers = LOCAL_STOCKS
+    const localStocks = await getLocalStocks();
+    const peers = localStocks
       .filter((s) => s.symbol !== upper && (!sector || s.sector === sector))
-      .concat(LOCAL_STOCKS.filter((s) => s.symbol !== upper && s.sector !== sector))
+      .concat(localStocks.filter((s) => s.symbol !== upper && s.sector !== sector))
       .slice(0, 5);
 
     return {

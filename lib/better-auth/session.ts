@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { headers } from "next/headers";
 import { getAuth } from "@/lib/better-auth/auth";
+import { isDepartment } from "@/lib/markets";
 
 // Signed-in user for the current request, or null when signed out (looked up once per request)
 export const getSessionUser = cache(async (): Promise<User | null> => {
@@ -14,7 +15,7 @@ export const getSessionUser = cache(async (): Promise<User | null> => {
         id: session.user.id,
         name: session.user.name,
         email: session.user.email,
-        department: session.user.department === 'local' ? 'local' : 'global',
+        department: isDepartment(session.user.department) ? session.user.department : 'global',
         teamRole: session.user.teamRole as TeamRole | undefined,
     };
 });

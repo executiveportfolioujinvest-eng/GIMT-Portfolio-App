@@ -1126,3 +1126,24 @@ export const INACTIVE_USER_REMINDER_EMAIL_TEMPLATE = `<!DOCTYPE html>
     </table>
 </body>
 </html>`;
+
+// Administrator announcements use the news summary layout
+export const ANNOUNCEMENT_EMAIL_TEMPLATE = NEWS_SUMMARY_EMAIL_TEMPLATE
+    .replace('<title>Market News Summary Today</title>', '<title>{{title}}</title>')
+    .replace('Today&rsquo;s Market News Summary', '{{title}}')
+    .replace('{{date}}', '{{audience}} &bull; {{date}}')
+    .replace(
+        '{{newsContent}}',
+        `<p class="mobile-text dark-text-secondary" style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #CCDADC;">{{message}}</p>
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                <tr>
+                                    <td align="center">
+                                        <a href="{{dashboardUrl}}" style="display: inline-block; background: #3B82F6; color: #FFFFFF; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-size: 16px; font-weight: 500;">Open the dashboard</a>
+                                    </td>
+                                </tr>
+                            </table>`
+    )
+    .replace(
+        'You&rsquo;re receiving this email because you signed up for the <strong style="color: #FFFFFF;">GMIT Daily</strong>.',
+        'You&rsquo;re receiving this because you are a member of the <strong style="color: #FFFFFF;">GMIT Portfolio</strong> team.'
+    );

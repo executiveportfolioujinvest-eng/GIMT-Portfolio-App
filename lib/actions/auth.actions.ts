@@ -2,22 +2,23 @@
 
 import {getAuth} from "@/lib/better-auth/auth";
 import {inngest} from "@/lib/inngest/client";
-import {headers} from "next/headers";
+import {cookies, headers} from "next/headers";
+import {ADMIN_RETURN_COOKIE} from "@/lib/admin-mode";
+import {recordAdminActivity} from "@/lib/admin-activity";
 import {APIError} from "better-auth/api";
 import {connectToDatabase} from "@/database/mongoose";
-import {LEADERSHIP_ROLES, marketForDepartment, marketHref} from "@/lib/markets";
-
-// Each department lands on its own dashboard after signing in
-const homeForDepartment = (department?: string | null) => marketHref(marketForDepartment(department), '/');
+import {homeHref, isAdminRole, LEADERSHIP_ROLES} from "@/lib/markets";
 
 // Better Auth rejections (e.g. a filled executive role) carry a message the user should see
 const authErrorMessage = (e: unknown, fallback: string) =>
     e instanceof APIError ? (e.body?.message ?? e.message ?? fallback) : fallback;
 
-export const signUpWithEmail = async ({ email, password, fullName, department, teamRole, country, investmentGoals, riskTolerance, preferredIndustry }: SignUpFormData) => {
+export const signUpWithEmail = async ({ email, password, fullName, department, teamRole, country, investmentGoals, riskTolerance, preferredIndustry, birthday, education, careerGoals, yearGoals, learningGoals, linkedinUrl }: SignUpFormData) => {
     try {
         const auth = await getAuth();
-        const response = await auth.api.signUpEmail({ body: { email, password, name: fullName, department, teamRole } })
+        const response = await auth.api.signUpEmail({
+            body: { email, password, name: fullName, department, teamRole, birthday, education, careerGoals, yearGoals, learningGoals, linkedinUrl }
+        })
 
         if(response) {
             // A failed welcome-email event shouldn't fail the sign-up itself
@@ -27,7 +28,7 @@ export const signUpWithEmail = async ({ email, password, fullName, department, t
             }).catch((e) => console.error('Failed to queue welcome email', e))
         }
 
-        return { success: true, data: response, home: homeForDepartment(department) }
+        return { success: true, data: response, home: homeHref({ department, teamRole }) }
     } catch (e) {
         console.log('Sign up failed', e)
         return { success: false, error: authErrorMessage(e, 'Sign up failed') }
@@ -39,7 +40,13 @@ export const signInWithEmail = async ({ email, password }: SignInFormData) => {
         const auth = await getAuth();
         const response = await auth.api.signInEmail({ body: { email, password } })
 
-        return { success: true, data: response, home: homeForDepartment((response.user as { department?: string }).department) }
+        // Signing straight into an administrator account (not through a manager's profile page) is logged too
+        const signedIn = response.user as { id: string; name: string; teamRole?: string };
+        if (isAdminRole(signedIn.teamRole)) {
+            await recordAdminActivity({ action: 'admin.sign-in', summary: 'Signed in to the administrator account directly', admin: signedIn, actor: null });
+        }
+
+        return { success: true, data: response, home: homeHref(response.user as { department?: string; teamRole?: string }) }
     } catch (e) {
         console.log('Sign in failed', e)
         return { success: false, error: 'Sign in failed' }
@@ -50,13 +57,22 @@ export const signOut = async () => {
     try {
         const auth = await getAuth();
         await auth.api.signOut({ headers: await headers() });
+
+        // Logging out from administrator mode also ends the portfolio manager's own session it was holding
+        const cookieStore = await cookies();
+        const ownSession = cookieStore.get(ADMIN_RETURN_COOKIE)?.value;
+        if (ownSession) {
+            const sessionCookie = (await auth.$context).authCookies.sessionToken;
+            await auth.api.signOut({ headers: new Headers({ cookie: `${sessionCookie.name}=${encodeURIComponent(ownSession)}` }) }).catch(() => null);
+            cookieStore.delete(ADMIN_RETURN_COOKIE);
+        }
     } catch (e) {
         console.log('Sign out failed', e)
         return { success: false, error: 'Sign out failed' }
     }
 }
 
-// Executive and deputy portfolio manager roles that already have someone in them, so sign-up can hide them
+// Single-seat roles (executive, deputy, President, Vice President) that already have someone in them, so sign-up can hide them
 export const getFilledLeadershipRoles = async (): Promise<TeamRole[]> => {
     try {
         const mongoose = await connectToDatabase();

@@ -15,7 +15,8 @@ import { getCompanyProfile } from "@/lib/actions/finnhub.actions";
 import { isStockInWatchlist } from "@/lib/actions/watchlist.actions";
 import { getPriceHistory } from "@/lib/actions/yahoo.actions";
 import { getStockNews } from "@/lib/actions/news.actions";
-import { LOCAL_STOCKS, type MarketKey } from "@/lib/markets";
+import { type MarketKey } from "@/lib/markets";
+import { findLocalStock } from "@/lib/dashboard-config";
 import { cn, formatChangePercent, formatChangeValue, formatCompactNumber, formatPrice, getChangeColorClass } from "@/lib/utils";
 
 // TradingView analysis page (Figma stock details design) for global stocks
@@ -88,7 +89,7 @@ const StatRow = ({ label, value }: { label: string; value: string }) => (
 
 // Same layout for JSE stocks, drawn from Yahoo Finance data since TradingView embeds carry no JSE data
 const LocalAnalysis = async ({ symbol }: { symbol: string }) => {
-  const known = LOCAL_STOCKS.find((s) => s.symbol === symbol);
+  const known = await findLocalStock(symbol);
   const [year, fiveYear, isInWatchlist] = await Promise.all([
     getPriceHistory(`${symbol}.JO`, '1Y'),
     getPriceHistory(`${symbol}.JO`, '5Y'),

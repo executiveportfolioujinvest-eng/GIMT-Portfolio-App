@@ -6,7 +6,7 @@ import MarketSwitcher from "@/components/MarketSwitcher";
 import {getTeamPortfolio} from "@/lib/actions/portfolio.actions";
 import {getNewsForStocks} from "@/lib/actions/news.actions";
 import {getSessionUser} from "@/lib/better-auth/session";
-import {marketHref, MARKETS, roleLabel, type MarketKey} from "@/lib/markets";
+import {homeHref, isOversightRole, marketForDepartment, marketHref, MARKETS, roleLabel, type MarketKey} from "@/lib/markets";
 import {cn, formatChangePercent, formatPrice, getChangeColorClass} from "@/lib/utils";
 
 const SummaryCard = ({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: number }) => (
@@ -26,8 +26,12 @@ const PortfolioPage = async ({ market }: { market: MarketKey }) => {
         return (
             <div className="dash-panel mx-auto max-w-xl py-12 text-center">
                 <p className="empty-title">This portfolio belongs to the {config.teamName}</p>
-                <p className="empty-description mx-auto">Only its members and the executive portfolio managers can view it.</p>
-                <Link href={marketHref(user?.department ?? 'global', '/portfolio')} className="search-btn mx-auto">Go to your team portfolio</Link>
+                <p className="empty-description mx-auto">Only its members, the executive portfolio managers, the President and Vice President can view it.</p>
+                {user?.teamRole === 'administrator' ? (
+                    <Link href={homeHref(user)} className="search-btn mx-auto">Go to Members</Link>
+                ) : (
+                    <Link href={marketHref(marketForDepartment(user?.department), '/portfolio')} className="search-btn mx-auto">Go to your team portfolio</Link>
+                )}
             </div>
         );
     }
@@ -46,7 +50,9 @@ const PortfolioPage = async ({ market }: { market: MarketKey }) => {
                 </p>
                 <p className="mt-3 text-sm text-gray-400">
                     {authority === 'observer'
-                        ? 'You are viewing another department’s portfolio as an executive portfolio manager (view only).'
+                        ? isOversightRole(user?.teamRole)
+                            ? `You are monitoring this portfolio as ${roleLabel(user?.teamRole)} (view only).`
+                            : 'You are viewing another department’s portfolio as an executive portfolio manager (view only).'
                         : `Signed in as ${roleLabel(user?.teamRole)}. ${
                             authority === 'executive'
                                 ? 'Your changes apply immediately, and you sign everyone else’s.'

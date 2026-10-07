@@ -2,16 +2,16 @@
 
 import {useRouter} from "next/navigation";
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/components/ui/table";
-import {LOCAL_STOCKS, marketHref} from "@/lib/markets";
+import {marketHref, type LocalStock} from "@/lib/markets";
 import {cn, formatChangePercent, formatChangeValue, getChangeColorClass} from "@/lib/utils";
 
 const COLUMNS = ['Name', 'Value', 'Change', 'Chg%', 'High', 'Low', 'Prev'];
 const num = (v?: number) => (v != null ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—');
 
 // JSE take on TradingView's Market Quotes widget, grouped by sector
-const LocalQuotesTable = ({ quotes }: { quotes: Record<string, MarketQuote | null> }) => {
+const LocalQuotesTable = ({ stocks, quotes }: { stocks: LocalStock[]; quotes: Record<string, MarketQuote | null> }) => {
     const router = useRouter();
-    const sectors = [...new Set(LOCAL_STOCKS.map((s) => s.sector))];
+    const sectors = [...new Set(stocks.map((s) => s.sector))];
 
     return (
         <div className="local-widget h-[600px] overflow-y-auto scrollbar-hide-default">
@@ -26,7 +26,7 @@ const LocalQuotesTable = ({ quotes }: { quotes: Record<string, MarketQuote | nul
                         <TableRow key={sector} className="border-gray-600 hover:bg-transparent">
                             <TableCell colSpan={COLUMNS.length} className="bg-gray-900/40 pl-4 text-xs font-semibold uppercase text-gray-100">{sector}</TableCell>
                         </TableRow>,
-                        ...LOCAL_STOCKS.filter((s) => s.sector === sector).map((stock) => {
+                        ...stocks.filter((s) => s.sector === sector).map((stock) => {
                             const q = quotes[stock.symbol];
                             return (
                                 <TableRow

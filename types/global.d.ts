@@ -1,9 +1,12 @@
 import type { ReactNode } from 'react';
 import type { Control, FieldError, FieldValues, Path, RegisterOptions, UseFormRegister } from 'react-hook-form';
-import type { MarketKey } from '@/lib/markets';
+import type { Department, MarketKey } from '@/lib/markets';
 
 declare global {
     type TeamRole =
+        | 'president'
+        | 'vice_president'
+        | 'administrator'
         | 'executive_global_pm'
         | 'executive_local_pm'
         | 'deputy_global_pm'
@@ -22,11 +25,41 @@ declare global {
         password: string;
     };
 
-    type SignUpFormData = {
+    type YearOfStudy =
+        | '1st_year'
+        | '2nd_year'
+        | '3rd_year'
+        | '4th_year'
+        | 'honours'
+        | 'postgraduate_diploma'
+        | 'masters'
+        | 'doctorate'
+        | 'completed';
+
+    type EducationEntry = {
+        degree: string;
+        institution: string;
+        // ISO country code of the institution; empty when typed in by hand
+        institutionCountry: string;
+        yearOfStudy: YearOfStudy;
+    };
+
+    // Background a member gives at sign-up for the portfolio managers
+    type MemberProfile = {
+        // Month and day only, 'MM-DD'
+        birthday: string;
+        education: EducationEntry[];
+        careerGoals: string;
+        yearGoals: string;
+        learningGoals: string;
+        linkedinUrl: string;
+    };
+
+    type SignUpFormData = MemberProfile & {
         fullName: string;
         email: string;
         password: string;
-        department: MarketKey;
+        department: Department;
         teamRole: TeamRole;
         country: string;
         investmentGoals: string;
@@ -87,7 +120,7 @@ declare global {
         id: string;
         name: string;
         email: string;
-        department?: MarketKey;
+        department?: Department;
         teamRole?: TeamRole;
     };
 
@@ -285,6 +318,57 @@ declare global {
     };
 
     type PortfolioAuthority = 'executive' | 'deputy' | 'member' | 'observer';
+
+    // A team member as the administrator's Members tab lists them
+    type MemberView = {
+        id: string;
+        name: string;
+        email: string;
+        department: Department;
+        teamRole: TeamRole | null;
+        linkedinUrl?: string;
+        joinedAt: string | null;
+    };
+
+    // An administrator account as executives, the President and Vice President see it on their profile page
+    type AdministratorView = {
+        id: string;
+        name: string;
+        email: string;
+        addedBy?: string;
+        joinedAt: string | null;
+    };
+
+    // The signed-in member's own profile page
+    type MyProfileView = Partial<MemberProfile> & {
+        id: string;
+        name: string;
+        email: string;
+        department: Department;
+        teamRole: TeamRole | null;
+        joinedAt: string | null;
+    };
+
+    // A line in the administrator activity log on the executives', President's and Vice President's profiles
+    type AdminActivityView = {
+        id: string;
+        action: string;
+        summary: string;
+        admin?: string;
+        actor?: string;
+        actorRole?: string;
+        at: string;
+    };
+
+    type AnnouncementView = {
+        id: string;
+        audience: 'global' | 'local' | 'both';
+        title: string;
+        message: string;
+        postedBy: string;
+        emailedTo: number;
+        createdAt: string;
+    };
 
     type ProposalAction = 'add' | 'edit' | 'remove';
 

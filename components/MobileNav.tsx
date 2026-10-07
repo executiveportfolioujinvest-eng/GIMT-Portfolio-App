@@ -3,20 +3,23 @@
 import {useEffect, useState} from "react";
 import Link from "next/link";
 import {usePathname, useRouter} from "next/navigation";
-import {LogOut, Menu, X} from "lucide-react";
+import {LogOut, Menu, ShieldOff, X} from "lucide-react";
 import NavItems from "@/components/NavItems";
 import RollText, {NavLinkContent} from "@/components/RollText";
 import {UserInitial} from "@/components/UserDropdown";
 import {signOut} from "@/lib/actions/auth.actions";
+import {exitAdminMode} from "@/lib/actions/profile.actions";
 import {marketFromPathname, marketHref} from "@/lib/markets";
 
 type MobileNavProps = {
     user: User;
     initialStocks: StockWithWatchlistStatus[];
     initialLocalStocks: StockWithWatchlistStatus[];
+    showAdmin?: boolean;
+    canExitAdminMode?: boolean;
 };
 
-const MobileNav = ({ user, initialStocks, initialLocalStocks }: MobileNavProps) => {
+const MobileNav = ({ user, initialStocks, initialLocalStocks, showAdmin = false, canExitAdminMode = false }: MobileNavProps) => {
     const router = useRouter();
     const pathname = usePathname();
     const portfolioHref = marketHref(marketFromPathname(pathname), '/portfolio');
@@ -34,6 +37,13 @@ const MobileNav = ({ user, initialStocks, initialLocalStocks }: MobileNavProps) 
     const handleSignOut = async () => {
         await signOut();
         router.push("/sign-in");
+    }
+
+    const handleExitAdminMode = async () => {
+        const result = await exitAdminMode();
+        setOpen(false);
+        router.push(result.home ?? '/sign-in');
+        router.refresh();
     }
 
     return (
@@ -57,11 +67,15 @@ const MobileNav = ({ user, initialStocks, initialLocalStocks }: MobileNavProps) 
                     onClick={(e) => { if ((e.target as HTMLElement).closest('a')) setOpen(false) }}
                 >
                     <nav>
-                        <NavItems initialStocks={initialStocks} initialLocalStocks={initialLocalStocks} className="nav-list-mobile" />
+                        <NavItems initialStocks={initialStocks} initialLocalStocks={initialLocalStocks} showAdmin={showAdmin} className="nav-list-mobile" />
                     </nav>
 
                     <Link href={portfolioHref} className="nav-link w-full justify-center" aria-label="Portfolio" data-active={pathname.startsWith(portfolioHref)}>
                         <NavLinkContent label="Portfolio" />
+                    </Link>
+
+                    <Link href="/profile" className="nav-link w-full justify-center" aria-label="Profile" data-active={pathname.startsWith('/profile')}>
+                        <NavLinkContent label="Profile" />
                     </Link>
 
                     <div className="flex items-center justify-center gap-3 py-1">
@@ -71,6 +85,14 @@ const MobileNav = ({ user, initialStocks, initialLocalStocks }: MobileNavProps) 
                             <span className="nav-menu-email">{user.email}</span>
                         </div>
                     </div>
+
+                    {canExitAdminMode && (
+                        <button type="button" onClick={handleExitAdminMode} className="nav-cta w-full justify-center" aria-label="Exit administrator mode">
+                            <span className="nav-fill" aria-hidden="true" />
+                            <ShieldOff className="relative h-4 w-4" aria-hidden="true" />
+                            <RollText>Exit administrator mode</RollText>
+                        </button>
+                    )}
 
                     <button type="button" onClick={handleSignOut} className="nav-cta w-full justify-center" aria-label="Logout">
                         <span className="nav-fill" aria-hidden="true" />

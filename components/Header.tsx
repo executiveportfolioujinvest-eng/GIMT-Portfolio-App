@@ -5,14 +5,19 @@ import MobileNav from "@/components/MobileNav";
 import RollText from "@/components/RollText";
 import HomeLink from "@/components/HomeLink";
 import {searchStocks} from "@/lib/actions/finnhub.actions";
-import {canAccessMarket} from "@/lib/markets";
+import {canAccessMarket, isAdminRole} from "@/lib/markets";
+import {isInAdminMode} from "@/lib/admin-mode";
 
 const Header = async ({ user }: { user: User }) => {
     // Only load search lists for the sections this member can open
-    const [initialStocks, initialLocalStocks] = await Promise.all([
+    const [initialStocks, initialLocalStocks, adminMode] = await Promise.all([
         canAccessMarket(user, 'global') ? searchStocks() : Promise.resolve([]),
         canAccessMarket(user, 'local') ? searchStocks(undefined, 'local') : Promise.resolve([]),
+        isInAdminMode(),
     ]);
+    const isAdmin = isAdminRole(user.teamRole);
+    // A portfolio manager working in an administrator account can return to their own
+    const canExitAdminMode = isAdmin && adminMode;
 
     return (
         <header className="nav-shell">
@@ -27,12 +32,12 @@ const Header = async ({ user }: { user: User }) => {
 
                     <div className="hidden md:flex items-center gap-6">
                         <nav>
-                            <NavItems initialStocks={initialStocks} initialLocalStocks={initialLocalStocks} />
+                            <NavItems initialStocks={initialStocks} initialLocalStocks={initialLocalStocks} showAdmin={isAdmin} />
                         </nav>
-                        <UserDropdown user={user} />
+                        <UserDropdown user={user} canExitAdminMode={canExitAdminMode} />
                     </div>
 
-                    <MobileNav user={user} initialStocks={initialStocks} initialLocalStocks={initialLocalStocks} />
+                    <MobileNav user={user} initialStocks={initialStocks} initialLocalStocks={initialLocalStocks} showAdmin={isAdmin} canExitAdminMode={canExitAdminMode} />
                 </div>
             </div>
         </header>

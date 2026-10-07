@@ -1,12 +1,15 @@
 import {inngest} from "@/lib/inngest/client";
 import {NEWS_SUMMARY_EMAIL_PROMPT, PERSONALIZED_WELCOME_EMAIL_PROMPT} from "@/lib/inngest/prompts";
-import {sendNewsSummaryEmail, sendPriceAlertEmail, sendWelcomeEmail} from "@/lib/nodemailer";
-import {getAllUsersForNewsEmail} from "@/lib/actions/user.actions";
+import {sendBirthdayReminderEmail, sendBirthdayWishEmail, sendNewsSummaryEmail, sendPriceAlertEmail, sendWelcomeEmail} from "@/lib/nodemailer";
+import {getAllUsersForNewsEmail, getMembersForBirthdayEmails} from "@/lib/actions/user.actions";
+import { birthdaysOn } from "@/lib/member-profile";
 import { getWatchlistSymbolsByEmail } from "@/lib/actions/watchlist.actions";
 import { getNews, getStockQuote } from "@/lib/actions/finnhub.actions";
 import { getYahooQuote } from "@/lib/actions/yahoo.actions";
 import { getMarketNews, getNewsForStocks } from "@/lib/actions/news.actions";
-import { LOCAL_STOCKS, marketForDepartment, MARKETS } from "@/lib/markets";
+import { marketForDepartment, MARKETS, roleLabel } from "@/lib/markets";
+import { getLocalStocks } from "@/lib/dashboard-config";
+import { advanceCollection } from "@/lib/valuation/collect";
 import { getFormattedTodayDate } from "@/lib/utils";
 import { connectToDatabase } from "@/database/mongoose";
 import { AlertModel } from "@/database/models/alert.model";
@@ -26,7 +29,7 @@ export const sendSignUpEmail = inngest.createFunction(
         const prompt = PERSONALIZED_WELCOME_EMAIL_PROMPT.replace('{{userProfile}}', userProfile)
 
         const response = await step.ai.infer('generate-welcome-intro', {
-            model: step.ai.models.gemini({ model: 'gemini-2.5-flash-lite' }),
+            model: step.ai.models.gemini({ model: 'gemini-flash-lite-latest' }),
             body: {
                 contents: [
                     {
@@ -71,7 +74,8 @@ export const sendDailyNewsSummary = inngest.createFunction(
                     // Local Markets (LIMT) members get JSE news; everyone else gets global news
                     if (marketForDepartment(user.department) === 'local') {
                         const symbols = await getWatchlistSymbolsByEmail(user.email, 'local');
-                        let articles = await getNewsForStocks('local', symbols.map((symbol) => ({ symbol, company: LOCAL_STOCKS.find((s) => s.symbol === symbol)?.name ?? symbol })), 6);
+                        const localStocks = await getLocalStocks();
+                        let articles = await getNewsForStocks('local', symbols.map((symbol) => ({ symbol, company: localStocks.find((s) => s.symbol === symbol)?.name ?? symbol })), 6);
                         if (articles.length === 0) articles = await getMarketNews('local', 'local', 6);
                         perUser.push({ user, articles });
                         continue;
@@ -103,7 +107,7 @@ export const sendDailyNewsSummary = inngest.createFunction(
                     const prompt = NEWS_SUMMARY_EMAIL_PROMPT.replace('{{newsData}}', JSON.stringify(articles, null, 2));
 
                     const response = await step.ai.infer(`summarize-news-${user.email}`, {
-                        model: step.ai.models.gemini({ model: 'gemini-2.5-flash-lite' }),
+                        model: step.ai.models.gemini({ model: 'gemini-flash-lite-latest' }),
                         body: {
                             contents: [{ role: 'user', parts: [{ text:prompt }]}]
                         }
@@ -226,5 +230,52 @@ export const checkStockAlerts = inngest.createFunction(
         });
 
         return { success: true, message: `${triggered.length} alert(s) sent` };
+    }
+)
+
+// Every morning at 07:00 (South African time): wish members happy birthday and remind everyone else on the team
+export const sendBirthdayEmails = inngest.createFunction(
+    { id: 'birthday-emails' },
+    [ { event: 'app/birthdays.check' }, { cron: 'TZ=Africa/Johannesburg 0 7 * * *' } ],
+    async ({ step }) => {
+        const members = await step.run('find-birthdays', getMembersForBirthdayEmails);
+        const today = birthdaysOn(new Date());
+        const celebrants = members.filter((m) => m.birthday && today.includes(m.birthday));
+
+        if (celebrants.length === 0) return { success: true, message: 'No birthdays today' };
+
+        await step.run('send-birthday-wishes', async () => {
+            await Promise.all(celebrants.map((m) =>
+                sendBirthdayWishEmail({ email: m.email, name: m.name }).catch((e) => console.error('Birthday wish failed', m.id, e))
+            ));
+        });
+
+        await step.run('send-birthday-reminders', async () => {
+            for (const celebrant of celebrants) {
+                const recipients = members.filter((m) => m.id !== celebrant.id).map((m) => m.email);
+                if (recipients.length === 0) continue;
+                await sendBirthdayReminderEmail({ recipients, name: celebrant.name, roleLabel: roleLabel(celebrant.teamRole) })
+                    .catch((e) => console.error('Birthday reminder failed', celebrant.id, e));
+            }
+        });
+
+        return { success: true, message: `${celebrants.length} birthday(s) celebrated` };
+    }
+)
+
+// Collects a company's financials in the background (portfolio holdings, or a valuation someone started),
+// one bounded step at a time
+export const collectCompanyFinancials = inngest.createFunction(
+    { id: 'collect-company-financials', concurrency: { limit: 2 } },
+    { event: 'app/financials.collect' },
+    async ({ event, step }) => {
+        const { market, symbol } = event.data as { market: 'global' | 'local'; symbol: string };
+        for (let i = 0; i < 12; i++) {
+            const state = await step.run(`advance-${i}`, () => advanceCollection(market, symbol));
+            if (!state || state.phase === 'done') return { success: true, phase: state?.phase ?? 'missing' };
+            // Gives a busy AI service (or a viewer's page also collecting) a moment before the next step
+            await step.sleep(`pause-${i}`, '5s');
+        }
+        return { success: true, phase: 'paused' };
     }
 )

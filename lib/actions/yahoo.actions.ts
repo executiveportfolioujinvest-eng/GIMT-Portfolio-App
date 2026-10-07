@@ -1,6 +1,6 @@
 'use server';
 
-import { LOCAL_STOCKS } from '@/lib/markets';
+import { getLocalStocks } from '@/lib/dashboard-config';
 
 // Yahoo Finance's public chart/search endpoints: free and keyless, but unofficial, so every call is cached and fails soft.
 const YAHOO_CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
@@ -100,8 +100,9 @@ export async function getYahooQuotes(yahooSymbols: string[]): Promise<(MarketQuo
 
 // Latest quotes for every tracked JSE stock, keyed by ticker
 export async function getJseQuotes(): Promise<Record<string, MarketQuote | null>> {
-  const quotes = await Promise.all(LOCAL_STOCKS.map((s) => getYahooQuote(`${s.symbol}.JO`)));
-  return Object.fromEntries(LOCAL_STOCKS.map((s, i) => [s.symbol, quotes[i]]));
+  const stocks = await getLocalStocks();
+  const quotes = await Promise.all(stocks.map((s) => getYahooQuote(`${s.symbol}.JO`)));
+  return Object.fromEntries(stocks.map((s, i) => [s.symbol, quotes[i]]));
 }
 
 export async function getPriceHistory(yahooSymbol: string, range: HistoryRange = '1M'): Promise<PriceHistory> {
@@ -134,7 +135,7 @@ export async function searchJseStocks(query?: string): Promise<StockWithWatchlis
   const trimmed = query?.trim() ?? '';
 
   if (!trimmed) {
-    return LOCAL_STOCKS.slice(0, 10).map((s) => ({ symbol: s.symbol, name: s.name, exchange: 'JSE', type: s.sector, isInWatchlist: false }));
+    return (await getLocalStocks()).slice(0, 10).map((s) => ({ symbol: s.symbol, name: s.name, exchange: 'JSE', type: s.sector, isInWatchlist: false }));
   }
 
   try {

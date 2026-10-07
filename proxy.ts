@@ -13,6 +13,7 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
     matcher: [
-        '/((?!api|_next/static|_next/image|favicon.ico|sign-in|sign-up|assets).*)',
+        // data/ holds public files the sign-up form needs, like the university list
+        '/((?!api|_next/static|_next/image|favicon.ico|sign-in|sign-up|assets|data/).*)',
     ],
 };

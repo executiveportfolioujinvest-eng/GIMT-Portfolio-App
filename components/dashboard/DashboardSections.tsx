@@ -9,47 +9,61 @@ import {getWatchlistWithData} from "@/lib/actions/watchlist.actions";
 import {getTopStocks} from "@/lib/actions/market.actions";
 import {getMarketNews} from "@/lib/actions/news.actions";
 import {searchStocks} from "@/lib/actions/finnhub.actions";
-import {marketHref, MARKETS, type MarketKey} from "@/lib/markets";
+import {getDashboardConfig} from "@/lib/dashboard-config";
+import {marketHref, type MarketKey} from "@/lib/markets";
 
-// Market Summary, Your Watchlist, Today's Top Stocks and Today's Financial News (Figma dashboard design)
+// Market Summary, Your Watchlist, Today's Top Stocks and Today's Financial News (Figma dashboard design).
+// Sections the administrator hid are skipped, and their data isn't fetched.
 const DashboardSections = async ({ market }: { market: MarketKey }) => {
-    const firstTab = MARKETS[market].summaryTabs[0];
+    const { hiddenSections, summaryTabs } = await getDashboardConfig(market);
+    const show = (key: string) => !hiddenSections.includes(key);
+    const firstTab = summaryTabs[0];
 
     const [history, quotes, watchlist, topStocks, topNews, localNews, worldNews, initialStocks] = await Promise.all([
-        getPriceHistory(firstTab.symbols[0].symbol, '1D'),
-        getYahooQuotes(firstTab.symbols.map((s) => s.symbol)),
-        getWatchlistWithData(market),
-        getTopStocks(market),
-        getMarketNews('top', market),
-        getMarketNews('local', market),
-        getMarketNews('world', market),
-        searchStocks(undefined, market),
+        show('summary') ? getPriceHistory(firstTab.symbols[0].symbol, '1D') : null,
+        show('summary') ? getYahooQuotes(firstTab.symbols.map((s) => s.symbol)) : [],
+        show('watchlist') ? getWatchlistWithData(market) : [],
+        show('top-stocks') ? getTopStocks(market) : [],
+        show('news') ? getMarketNews('top', market) : [],
+        show('news') ? getMarketNews('local', market) : [],
+        show('news') ? getMarketNews('world', market) : [],
+        show('watchlist') || show('top-stocks') ? searchStocks(undefined, market) : [],
     ]);
+
+    if (!['summary', 'watchlist', 'top-stocks', 'news'].some(show)) return null;
 
     return (
         <div className="grid w-full grid-cols-1 gap-x-8 gap-y-10 xl:grid-cols-2">
-            <div className="min-w-0">
-                <SectionHeader title="Market Summary" />
-                <MarketSummary market={market} initialHistory={history} initialQuotes={quotes} />
-            </div>
+            {show('summary') && history && (
+                <div className="min-w-0">
+                    <SectionHeader title="Market Summary" />
+                    <MarketSummary market={market} tabs={summaryTabs} initialHistory={history} initialQuotes={quotes} />
+                </div>
+            )}
 
-            <div className="min-w-0">
-                <SectionHeader title="Your Watchlist" href={marketHref(market, '/watchlist')} />
-                <WatchlistCards market={market} watchlist={watchlist} initialStocks={initialStocks} />
-            </div>
+            {show('watchlist') && (
+                <div className="min-w-0">
+                    <SectionHeader title="Your Watchlist" href={marketHref(market, '/watchlist')} />
+                    <WatchlistCards market={market} watchlist={watchlist} initialStocks={initialStocks} />
+                </div>
+            )}
 
-            <div className="min-w-0">
-                <SectionHeader
-                    title="Today's Top Stocks"
-                    action={<SearchCommand renderAs="text" label="View all" className="dash-view-all" market={market} initialStocks={initialStocks} />}
-                />
-                <TopStocksTable market={market} stocks={topStocks} />
-            </div>
+            {show('top-stocks') && (
+                <div className="min-w-0">
+                    <SectionHeader
+                        title="Today's Top Stocks"
+                        action={<SearchCommand renderAs="text" label="View all" className="dash-view-all" market={market} initialStocks={initialStocks} />}
+                    />
+                    <TopStocksTable market={market} stocks={topStocks} />
+                </div>
+            )}
 
-            <div className="min-w-0">
-                <SectionHeader title="Today's Financial News" href={marketHref(market, '/news')} />
-                <FinancialNews news={{ top: topNews, local: localNews, world: worldNews }} />
-            </div>
+            {show('news') && (
+                <div className="min-w-0">
+                    <SectionHeader title="Today's Financial News" href={marketHref(market, '/news')} />
+                    <FinancialNews news={{ top: topNews, local: localNews, world: worldNews }} />
+                </div>
+            )}
         </div>
     );
 };

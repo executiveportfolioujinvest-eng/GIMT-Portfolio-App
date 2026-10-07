@@ -3,7 +3,8 @@ import { mongodbAdapter} from "better-auth/adapters/mongodb";
 import { connectToDatabase} from "@/database/mongoose";
 import { nextCookies} from "better-auth/next-js";
 import { APIError } from "better-auth/api";
-import { departmentForLeadershipRole, isLeadershipRole, isMarketKey, isTeamRole } from "@/lib/markets";
+import { isAdminRole, isDepartment, isLeadershipRole, isSignUpRole, roleFitsDepartment, roleLabel } from "@/lib/markets";
+import { parseMemberProfile, parseProfileUpdate } from "@/lib/member-profile";
 
 type MongooseDb = NonNullable<Awaited<ReturnType<typeof connectToDatabase>>['connection']['db']>;
 
@@ -26,29 +27,74 @@ const createAuth = (db: MongooseDb) => betterAuth({
             department: { type: 'string', required: false, defaultValue: 'global', input: true },
             // Position on the team, e.g. executive_global_pm or equity_analyst
             teamRole: { type: 'string', required: false, defaultValue: 'investment_analyst', input: true },
+            // Background for the portfolio managers; kept out of the session
+            birthday: { type: 'string', required: false, input: true, returned: false },
+            education: { type: 'json', required: false, input: true, returned: false },
+            careerGoals: { type: 'string', required: false, input: true, returned: false },
+            yearGoals: { type: 'string', required: false, input: true, returned: false },
+            learningGoals: { type: 'string', required: false, input: true, returned: false },
+            linkedinUrl: { type: 'string', required: false, input: true, returned: false },
         },
     },
     databaseHooks: {
         user: {
             create: {
                 // Enforced here so no sign-up path can skip it
-                before: async (user) => {
+                before: async (user, context) => {
                     const { department, teamRole } = user;
-                    if (!isMarketKey(department)) {
+
+                    // Administrators are added from an executive's, the President's or Vice President's profile page
+                    // (a direct server call), never through a sign-up request
+                    if (isAdminRole(teamRole)) {
+                        if (context) {
+                            throw new APIError('FORBIDDEN', { message: 'Administrators can only be added by an executive portfolio manager, the President or Vice President' });
+                        }
+                        return { data: { ...user, department: 'both' } };
+                    }
+
+                    // Sign-ups must give their full background; members an administrator adds directly
+                    // (a server call with no request context) can fill it in later
+                    let profile: Partial<MemberProfile>;
+                    try {
+                        profile = context ? parseMemberProfile(user) : parseProfileUpdate(user);
+                    } catch (e) {
+                        throw new APIError('BAD_REQUEST', { message: e instanceof Error ? e.message : 'Complete your profile' });
+                    }
+                    if (!isDepartment(department)) {
                         throw new APIError('BAD_REQUEST', { message: 'Select the portfolio you are part of' });
                     }
-                    if (!isTeamRole(teamRole)) {
+                    if (!isSignUpRole(teamRole)) {
                         throw new APIError('BAD_REQUEST', { message: 'Select your role' });
                     }
+                    if (!roleFitsDepartment(teamRole, department)) {
+                        throw new APIError('BAD_REQUEST', {
+                            message: department === 'both'
+                                ? 'Only the President and Vice President belong to both portfolios'
+                                : 'That role belongs to another department',
+                        });
+                    }
                     if (isLeadershipRole(teamRole)) {
-                        if (departmentForLeadershipRole(teamRole) !== department) {
-                            throw new APIError('BAD_REQUEST', { message: "That portfolio manager role belongs to the other department" });
-                        }
-                        // One executive and one deputy portfolio manager per department
+                        // One executive and one deputy per department, one President and one Vice President
                         const existing = await db.collection('user').findOne({ teamRole });
                         if (existing) {
-                            throw new APIError('BAD_REQUEST', { message: 'That portfolio manager role has already been filled' });
+                            throw new APIError('BAD_REQUEST', { message: `The ${roleLabel(teamRole)} role has already been filled` });
                         }
+                    }
+
+                    return { data: { ...user, ...profile } };
+                },
+            },
+            update: {
+                // Members can't change their own department or role (e.g. promote themselves to executive)
+                before: async (user) => {
+                    if ('department' in user || 'teamRole' in user) {
+                        throw new APIError('FORBIDDEN', { message: 'Department and role are changed by an administrator on the Members page' });
+                    }
+                    // Profile edits must still pass the sign-up rules
+                    try {
+                        return { data: { ...user, ...parseProfileUpdate(user) } };
+                    } catch (e) {
+                        throw new APIError('BAD_REQUEST', { message: e instanceof Error ? e.message : 'Invalid profile' });
                     }
                 },
             },

@@ -139,7 +139,7 @@ const ChangeModal = ({ market, action, authority, holding, open, setOpen }: Chan
                             rows={3}
                             maxLength={500}
                             placeholder="Why this change?"
-                            className="form-input h-auto w-full resize-none rounded-lg border px-3 py-3"
+                            className="form-input !h-auto w-full resize-none rounded-lg border px-3 py-3"
                             {...register('note')}
                         />
                     </div>

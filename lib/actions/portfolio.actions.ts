@@ -1,5 +1,9 @@
 'use server';
 
+import { findLocalStock } from '@/lib/dashboard-config';
+import { recordAdminActivity } from '@/lib/admin-activity';
+import { startCollection } from '@/lib/valuation/collect';
+import { inngest } from '@/lib/inngest/client';
 import { unstable_rethrow } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { connectToDatabase } from '@/database/mongoose';
@@ -11,8 +15,8 @@ import { getYahooQuote } from '@/lib/actions/yahoo.actions';
 import { getStockSnapshots } from '@/lib/actions/market.actions';
 import {
   DEPUTY_ROLES,
+  isAdminRole,
   isMarketKey,
-  LOCAL_STOCKS,
   marketHref,
   MARKETS,
   portfolioAuthority,
@@ -59,7 +63,7 @@ const parseAmounts = (input: ChangeInput) => {
 // Confirms the ticker exists in the market and returns the company name
 const resolveCompany = async (market: MarketKey, symbol: string) => {
   if (market === 'local') {
-    const known = LOCAL_STOCKS.find((s) => s.symbol === symbol);
+    const known = await findLocalStock(symbol);
     if (known) return known.name;
     const quote = await getYahooQuote(`${symbol}.JO`);
     if (!quote) throw new Error(`${symbol} isn't listed on the JSE`);
@@ -118,6 +122,13 @@ const execute = async (proposalId: string, fromStatuses: ProposalStatus[], appro
     await PortfolioProposal.updateOne({ _id: proposalId }, { $set: { status: claimed.status }, $unset: { approvedBy: 1 } });
     throw err;
   }
+
+  // Holdings get their financials collected in the background, ready for the Valuation tab
+  if (claimed.action === 'add') {
+    await startCollection(claimed.market, claimed.symbol)
+      .then(() => inngest.send({ name: 'app/financials.collect', data: { market: claimed.market, symbol: claimed.symbol } }))
+      .catch((e) => console.error('Failed to queue financials collection', claimed.symbol, e));
+  }
   return claimed;
 };
 
@@ -170,6 +181,16 @@ export async function submitPortfolioChange(input: ChangeInput) {
       }
       revalidatePortfolio(market);
       return { success: true, executed: true };
+    }
+
+    // Administrators' requests go on the activity log the executives, President and Vice President review
+    if (isAdminRole(user.teamRole)) {
+      const verb = { add: 'adding', edit: 'changing', remove: 'removing' }[input.action as ProposalAction];
+      await recordAdminActivity({
+        action: 'portfolio.propose',
+        summary: `Requested ${verb} ${details.symbol} in the ${MARKETS[market].teamName} portfolio (sent for sign-off)`,
+        admin: user,
+      });
     }
 
     revalidatePortfolio(market);
@@ -252,6 +273,14 @@ export async function cancelPortfolioChange(proposalId: string) {
       { $set: { status: 'cancelled' } }
     );
     if (!proposal) return { success: false, error: 'Only your own open requests can be cancelled' };
+
+    if (isAdminRole(user.teamRole)) {
+      await recordAdminActivity({
+        action: 'portfolio.cancel',
+        summary: `Cancelled the request for ${proposal.symbol} in the ${MARKETS[proposal.market as MarketKey].teamName} portfolio`,
+        admin: user,
+      });
+    }
 
     revalidatePortfolio(proposal.market);
     return { success: true };

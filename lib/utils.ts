@@ -21,6 +21,10 @@ export const formatTimeAgo = (timestamp: number) => {
   }
 };
 
+// Two-letter country code to its flag emoji, e.g. ZA -> 🇿🇦
+export const getFlagEmoji = (countryCode: string) =>
+  String.fromCodePoint(...countryCode.toUpperCase().split('').map((char) => 127397 + char.charCodeAt(0)));
+
 export function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

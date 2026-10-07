@@ -8,7 +8,7 @@ import {getGoogleNews, getMarketNews, getNewsForStocks} from "@/lib/actions/news
 import {getHoldingStocks} from "@/lib/actions/portfolio.actions";
 import {getWatchlistWithData} from "@/lib/actions/watchlist.actions";
 import {TOP_STORIES_WIDGET_CONFIG} from "@/lib/constants";
-import {isExecutiveRole, marketHref, MARKETS, type MarketKey} from "@/lib/markets";
+import {canSwitchMarkets, marketHref, MARKETS, type MarketKey} from "@/lib/markets";
 import {getSessionUser} from "@/lib/better-auth/session";
 
 // Every news source in the app in one place: Finnhub, Google News, TradingView,
@@ -16,8 +16,8 @@ import {getSessionUser} from "@/lib/better-auth/session";
 const NewsPage = async ({ market }: { market: MarketKey }) => {
     const other: MarketKey = market === 'global' ? 'local' : 'global';
     const config = MARKETS[market];
-    // Only the executives can cross over to the other department's section
-    const canSwitch = isExecutiveRole((await getSessionUser())?.teamRole);
+    // Only the executives, President and Vice President can cross over to the other department's section
+    const canSwitch = canSwitchMarkets((await getSessionUser())?.teamRole);
 
     const [top, home, world, holdings, watchlist, economy] = await Promise.all([
         getMarketNews('top', market, 15),

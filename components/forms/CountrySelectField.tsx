@@ -18,7 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Check, ChevronsUpDown } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, getFlagEmoji } from '@/lib/utils';
 import countryList from 'react-select-country-list';
 
 type CountrySelectProps<T extends FieldValues> = {
@@ -40,15 +40,6 @@ const CountrySelect = ({
 
     // Get country options with flags
     const countries = countryList().getData();
-
-    // Helper function to get flag emoji
-    const getFlagEmoji = (countryCode: string) => {
-        const codePoints = countryCode
-            .toUpperCase()
-            .split('')
-            .map((char) => 127397 + char.charCodeAt(0));
-        return String.fromCodePoint(...codePoints);
-    };
 
     return (
         <Popover open={open} onOpenChange={setOpen}>

@@ -9,9 +9,10 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {usePathname, useRouter} from "next/navigation";
-import {Briefcase, ChevronsUpDown, LogOut} from "lucide-react";
+import {Briefcase, ChevronsUpDown, LogOut, ShieldOff, UserRound} from "lucide-react";
 import RollText from "@/components/RollText";
 import {signOut} from "@/lib/actions/auth.actions";
+import {exitAdminMode} from "@/lib/actions/profile.actions";
 import {marketFromPathname, marketHref} from "@/lib/markets";
 
 export const UserInitial = ({ name, className }: { name: string; className?: string }) => (
@@ -20,7 +21,7 @@ export const UserInitial = ({ name, className }: { name: string; className?: str
     </span>
 )
 
-const UserDropdown = ({ user }: {user: User}) => {
+const UserDropdown = ({ user, canExitAdminMode = false }: { user: User; canExitAdminMode?: boolean }) => {
     const router = useRouter();
     const pathname = usePathname();
     const portfolioHref = marketHref(marketFromPathname(pathname), '/portfolio');
@@ -28,6 +29,13 @@ const UserDropdown = ({ user }: {user: User}) => {
     const handleSignOut = async () => {
         await signOut();
         router.push("/sign-in");
+    }
+
+    // Back to the portfolio manager's own account
+    const handleExitAdminMode = async () => {
+        const result = await exitAdminMode();
+        router.push(result.home ?? '/sign-in');
+        router.refresh();
     }
 
     return (
@@ -51,11 +59,23 @@ const UserDropdown = ({ user }: {user: User}) => {
                     </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-gray-900/40 mx-0"/>
+                <DropdownMenuItem onClick={() => router.push('/profile')} className="nav-menu-item rounded-none px-2 pt-2 pb-1.5 text-sm cursor-pointer focus:bg-transparent focus:text-white">
+                    <span className="nav-fill" aria-hidden="true" />
+                    <UserRound className="relative h-4 w-4 text-white" />
+                    <RollText>Profile</RollText>
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push(portfolioHref)} className="nav-menu-item rounded-none px-2 pt-2 pb-1.5 text-sm cursor-pointer focus:bg-transparent focus:text-white">
                     <span className="nav-fill" aria-hidden="true" />
                     <Briefcase className="relative h-4 w-4 text-white" />
                     <RollText>Portfolio</RollText>
                 </DropdownMenuItem>
+                {canExitAdminMode && (
+                    <DropdownMenuItem onClick={handleExitAdminMode} className="nav-menu-item rounded-none px-2 pt-2 pb-1.5 text-sm cursor-pointer focus:bg-transparent focus:text-white">
+                        <span className="nav-fill" aria-hidden="true" />
+                        <ShieldOff className="relative h-4 w-4 text-white" />
+                        <RollText>Exit administrator mode</RollText>
+                    </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={handleSignOut} className="nav-menu-item rounded-none px-2 pt-2 pb-1.5 text-sm cursor-pointer focus:bg-transparent focus:text-white">
                     <span className="nav-fill" aria-hidden="true" />
                     <LogOut className="relative h-4 w-4 text-white" />

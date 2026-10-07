@@ -1,5 +1,5 @@
 import Link from "next/link";
-import {LOCAL_STOCKS, marketHref} from "@/lib/markets";
+import {marketHref, type LocalStock} from "@/lib/markets";
 import {formatChangePercent} from "@/lib/utils";
 
 // Tile colour scales with the day's move, like TradingView's heatmap (±3% is full strength)
@@ -11,8 +11,8 @@ const tileColor = (changePercent?: number) => {
 };
 
 // JSE stocks grouped by sector and coloured by today's change
-const LocalHeatmap = ({ quotes }: { quotes: Record<string, MarketQuote | null> }) => {
-    const sectors = [...new Set(LOCAL_STOCKS.map((s) => s.sector))];
+const LocalHeatmap = ({ stocks, quotes }: { stocks: LocalStock[]; quotes: Record<string, MarketQuote | null> }) => {
+    const sectors = [...new Set(stocks.map((s) => s.sector))];
 
     return (
         <div className="local-widget grid h-[600px] auto-rows-fr grid-cols-2 gap-1 overflow-y-auto p-1 scrollbar-hide-default md:grid-cols-3">
@@ -20,7 +20,7 @@ const LocalHeatmap = ({ quotes }: { quotes: Record<string, MarketQuote | null> }
                 <div key={sector} className="flex min-h-[150px] flex-col">
                     <p className="px-1 py-1 text-xs text-gray-400">{sector} &rsaquo;</p>
                     <div className="grid flex-1 grid-cols-2 gap-1">
-                        {LOCAL_STOCKS.filter((s) => s.sector === sector).map((stock) => {
+                        {stocks.filter((s) => s.sector === sector).map((stock) => {
                             const change = quotes[stock.symbol]?.changePercent;
                             return (
                                 <Link

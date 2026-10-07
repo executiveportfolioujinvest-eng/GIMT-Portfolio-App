@@ -169,10 +169,19 @@ export const marketHref = (market: MarketKey, path: string) => {
     return path === '/' ? base : `${base}${path}`;
 };
 
-export const DEPARTMENT_OPTIONS: { value: MarketKey; label: string }[] = [
+// 'both' is the President and Vice President, who oversee the two departments
+export type Department = MarketKey | 'both';
+
+export const DEPARTMENT_OPTIONS: { value: Department; label: string }[] = [
     { value: 'global', label: 'Global Markets Department' },
     { value: 'local', label: 'Local Markets Department' },
+    { value: 'both', label: 'Both Portfolios (President / Vice President)' },
 ];
+
+export const isDepartment = (value: unknown): value is Department => isMarketKey(value) || value === 'both';
+
+export const departmentLabel = (department?: string | null) =>
+    DEPARTMENT_OPTIONS.find((d) => d.value === department)?.label.replace(/ \(.*\)$/, '') ?? 'Global Markets Department';
 
 // Each department has exactly one executive portfolio manager, who heads its sub-committee,
 // and one deputy portfolio manager
@@ -186,7 +195,17 @@ export const DEPUTY_ROLES: Record<MarketKey, TeamRole> = {
     local: 'deputy_local_pm',
 };
 
+// The President and Vice President see both departments (view only), to monitor the portfolio managers
+export const OVERSIGHT_ROLES: TeamRole[] = ['president', 'vice_president'];
+
+// Runs the administrator console (members, dashboards, announcements) for both departments. Never offered at
+// sign-up: an executive PM, the President or Vice President adds the account and enters it from their profile page
+export const ADMIN_ROLE: TeamRole = 'administrator';
+
+// Roles offered at sign-up (everything except administrator)
 export const ROLE_OPTIONS: { value: TeamRole; label: string }[] = [
+    { value: 'president', label: 'President' },
+    { value: 'vice_president', label: 'Vice President' },
     { value: 'executive_global_pm', label: 'Executive Global Markets Portfolio Manager' },
     { value: 'executive_local_pm', label: 'Executive Local Markets Portfolio Manager' },
     { value: 'deputy_global_pm', label: 'Deputy Global Markets Portfolio Manager' },
@@ -201,35 +220,90 @@ export const ROLE_OPTIONS: { value: TeamRole; label: string }[] = [
     { value: 'trader', label: 'Trader' },
 ];
 
-export const isTeamRole = (value: unknown): value is TeamRole => ROLE_OPTIONS.some((r) => r.value === value);
+export const isSignUpRole = (value: unknown): value is TeamRole => ROLE_OPTIONS.some((r) => r.value === value);
 
 export const isExecutiveRole = (role: unknown): boolean => Object.values(EXECUTIVE_ROLES).includes(role as TeamRole);
 
-// Executive and deputy seats: one of each per department
-export const LEADERSHIP_ROLES: TeamRole[] = [...Object.values(EXECUTIVE_ROLES), ...Object.values(DEPUTY_ROLES)];
+export const isOversightRole = (role: unknown): boolean => OVERSIGHT_ROLES.includes(role as TeamRole);
+
+export const isAdminRole = (role: unknown): boolean => role === ADMIN_ROLE;
+
+// Single seats: one executive and one deputy per department, one President and one Vice President
+export const LEADERSHIP_ROLES: TeamRole[] = [...Object.values(EXECUTIVE_ROLES), ...Object.values(DEPUTY_ROLES), ...OVERSIGHT_ROLES];
 
 export const isLeadershipRole = (role: unknown): boolean => LEADERSHIP_ROLES.includes(role as TeamRole);
 
-// The department a leadership role belongs to (sub-committee roles belong to either)
-export const departmentForLeadershipRole = (role: unknown): MarketKey | null =>
-    (['global', 'local'] as MarketKey[]).find((d) => EXECUTIVE_ROLES[d] === role || DEPUTY_ROLES[d] === role) ?? null;
+// The department a leadership role belongs to (sub-committee roles belong to either Global or Local)
+export const departmentForLeadershipRole = (role: unknown): Department | null => {
+    if (isOversightRole(role)) return 'both';
+    return (['global', 'local'] as MarketKey[]).find((d) => EXECUTIVE_ROLES[d] === role || DEPUTY_ROLES[d] === role) ?? null;
+};
 
-export const roleLabel = (role?: string | null) => ROLE_OPTIONS.find((r) => r.value === role)?.label ?? 'Team member';
+// Whether a role can be held in a department: 'both' is only for the President and Vice President
+export const roleFitsDepartment = (role: unknown, department: unknown): boolean => {
+    const seatOf = departmentForLeadershipRole(role);
+    if (department === 'both') return seatOf === 'both';
+    return isMarketKey(department) && (seatOf === null || seatOf === department);
+};
+
+export const roleLabel = (role?: string | null) =>
+    role === ADMIN_ROLE ? 'Administrator' : ROLE_OPTIONS.find((r) => r.value === role)?.label ?? 'Team member';
 
 type TeamMember = { department?: string | null; teamRole?: string | null } | null | undefined;
 
-// Members only see their own department's section; the two executives can switch between both
-export const canAccessMarket = (user: TeamMember, market: MarketKey): boolean =>
-    !!user && (marketForDepartment(user.department) === market || isExecutiveRole(user.teamRole));
+// The executives, President, Vice President and administrators can move between the Global and Local sections
+export const canSwitchMarkets = (role: unknown): boolean => isExecutiveRole(role) || isOversightRole(role) || isAdminRole(role);
 
-// What a member may do with a department's team portfolio ('observer' is the other department's executive: view only)
+// Executive PMs, the President and Vice President add administrators from their profile page
+export const canCreateAdministrators = (role: unknown): boolean => isExecutiveRole(role) || isOversightRole(role);
+
+// Members only see their own department's section
+export const canAccessMarket = (user: TeamMember, market: MarketKey): boolean =>
+    !!user && (marketForDepartment(user.department) === market || canSwitchMarkets(user.teamRole));
+
+// What a member may do with a department's team portfolio. 'observer' is view only: the other department's
+// executive, and the President and Vice President for both portfolios. Administrators propose changes to
+// either portfolio, which that department's executive signs like anyone else's
 export const portfolioAuthority = (user: TeamMember, market: MarketKey): PortfolioAuthority | null => {
     if (!user) return null;
+    if (isAdminRole(user.teamRole)) return 'member';
+    if (isOversightRole(user.teamRole)) return 'observer';
     if (marketForDepartment(user.department) !== market) return isExecutiveRole(user.teamRole) ? 'observer' : null;
     if (user.teamRole === EXECUTIVE_ROLES[market]) return 'executive';
     if (user.teamRole === DEPUTY_ROLES[market]) return 'deputy';
     return 'member';
 };
 
-// Users land on their own department's dashboard
+// Users land on their own department's dashboard (the President and Vice President start on Global)
 export const marketForDepartment = (department?: string | null): MarketKey => (department === 'local' ? 'local' : 'global');
+
+// Where a user lands after signing in, or when they open a page they can't use
+export const homeHref = (user: TeamMember): string =>
+    isAdminRole(user?.teamRole) ? '/admin' : marketHref(marketForDepartment(user?.department), '/');
+
+// Dashboard sections the administrator can show or hide, per department
+export const DASHBOARD_SECTIONS: Record<MarketKey, { key: string; label: string }[]> = {
+    global: [
+        { key: 'overview', label: 'Market Overview (TradingView)' },
+        { key: 'heatmap', label: 'Market Cap heatmap (TradingView)' },
+        { key: 'stories', label: 'Top Stories (TradingView)' },
+        { key: 'quotes', label: 'Market Data quotes (TradingView)' },
+        { key: 'summary', label: 'Market Summary' },
+        { key: 'watchlist', label: 'Your Watchlist' },
+        { key: 'top-stocks', label: "Today's Top Stocks" },
+        { key: 'news', label: "Today's Financial News" },
+    ],
+    local: [
+        { key: 'overview', label: 'Market Overview' },
+        { key: 'heatmap', label: 'Market Cap heatmap' },
+        { key: 'stories', label: 'Top Stories' },
+        { key: 'quotes', label: 'JSE quotes table' },
+        { key: 'summary', label: 'Market Summary' },
+        { key: 'watchlist', label: 'Your Watchlist' },
+        { key: 'top-stocks', label: "Today's Top Stocks" },
+        { key: 'news', label: "Today's Financial News" },
+    ],
+};
+
+// Sectors a JSE stock can be filed under (the Local Market Overview tabs group these)
+export const LOCAL_SECTORS = [...new Set(LOCAL_STOCKS.map((s) => s.sector))];

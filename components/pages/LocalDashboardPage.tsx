@@ -5,45 +5,67 @@ import LocalQuotesTable from "@/components/local/LocalQuotesTable";
 import NewsList from "@/components/dashboard/NewsList";
 import DashboardSections, {DashboardSectionsSkeleton} from "@/components/dashboard/DashboardSections";
 import MarketSwitcher from "@/components/MarketSwitcher";
+import Announcements from "@/components/dashboard/Announcements";
 import {getJseQuotes, getPriceHistory} from "@/lib/actions/yahoo.actions";
 import {getMarketNews} from "@/lib/actions/news.actions";
-import {LOCAL_OVERVIEW_TABS, LOCAL_STOCKS} from "@/lib/markets";
+import {getDashboardConfig} from "@/lib/dashboard-config";
+import {LOCAL_OVERVIEW_TABS} from "@/lib/markets";
+
+// A section left alone in its row (the other was hidden by the administrator) takes the full width
+const FULL_ROW = "md:col-span-2 xl:col-span-3";
 
 // LIMT dashboard: the same layout as the global dashboard, built on JSE data
 const LocalDashboardPage = async () => {
+    const { hiddenSections, localStocks } = await getDashboardConfig('local');
+    const show = (key: string) => !hiddenSections.includes(key);
+
     // The overview panel opens on the first stock of its first sector tab
-    const firstStock = LOCAL_STOCKS.find((s) => LOCAL_OVERVIEW_TABS[0].sectors.includes(s.sector)) ?? LOCAL_STOCKS[0];
+    const firstStock = localStocks.find((s) => LOCAL_OVERVIEW_TABS.some((t) => t.sectors.includes(s.sector))) ?? localStocks[0];
+    const needsQuotes = show('overview') || show('heatmap') || show('quotes');
     const [quotes, history, stories] = await Promise.all([
-        getJseQuotes(),
-        getPriceHistory(`${firstStock.symbol}.JO`, '1Y'),
-        getMarketNews('local', 'local', 12),
+        needsQuotes ? getJseQuotes() : {},
+        show('overview') ? getPriceHistory(`${firstStock.symbol}.JO`, '1Y') : null,
+        show('stories') ? getMarketNews('local', 'local', 12) : [],
     ]);
 
     return (
         <div className="w-full">
             <MarketSwitcher market="local" path="/" />
+            <Announcements market="local" />
             <div className="flex min-h-screen home-wrapper">
+                {(show('overview') || show('heatmap')) && (
                 <section className="grid w-full gap-8 home-section">
-                    <div className="md:col-span-1 xl:col-span-1">
+                    {show('overview') && history && (
+                    <div className={show('heatmap') ? "md:col-span-1 xl:col-span-1" : FULL_ROW}>
                         <h3 className="font-semibold text-2xl text-gray-100 mb-5">Market Overview</h3>
-                        <LocalMarketOverview quotes={quotes} initialHistory={history} />
+                        <LocalMarketOverview stocks={localStocks} quotes={quotes} initialHistory={history} />
                     </div>
-                    <div className="md-col-span xl:col-span-2">
+                    )}
+                    {show('heatmap') && (
+                    <div className={show('overview') ? "md-col-span xl:col-span-2" : FULL_ROW}>
                         <h3 className="font-semibold text-2xl text-gray-100 mb-5">Market Cap</h3>
-                        <LocalHeatmap quotes={quotes} />
+                        <LocalHeatmap stocks={localStocks} quotes={quotes} />
                     </div>
+                    )}
                 </section>
+                )}
+                {(show('stories') || show('quotes')) && (
                 <section className="grid w-full gap-8 home-section">
-                    <div className="h-full md:col-span-1 xl:col-span-1">
+                    {show('stories') && (
+                    <div className={show('quotes') ? "h-full md:col-span-1 xl:col-span-1" : `h-full ${FULL_ROW}`}>
                         <div className="local-widget h-[600px] overflow-y-auto px-4 scrollbar-hide-default">
                             <h3 className="sticky top-0 z-10 bg-gray-800 py-4 text-2xl font-semibold text-gray-100">Top Stories</h3>
                             <NewsList articles={stories} />
                         </div>
                     </div>
-                    <div className="h-full md:col-span-1 xl:col-span-2">
-                        <LocalQuotesTable quotes={quotes} />
+                    )}
+                    {show('quotes') && (
+                    <div className={show('stories') ? "h-full md:col-span-1 xl:col-span-2" : `h-full ${FULL_ROW}`}>
+                        <LocalQuotesTable stocks={localStocks} quotes={quotes} />
                     </div>
+                    )}
                 </section>
+                )}
                 <Suspense fallback={<DashboardSectionsSkeleton />}>
                     <DashboardSections market="local" />
                 </Suspense>
