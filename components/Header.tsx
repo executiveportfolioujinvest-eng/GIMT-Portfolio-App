@@ -1,20 +1,37 @@
-import Link from "next/link";
 import Image from "next/image";
 import NavItems from "@/components/NavItems";
 import UserDropdown from "@/components/UserDropdown";
+import MobileNav from "@/components/MobileNav";
+import RollText from "@/components/RollText";
+import HomeLink from "@/components/HomeLink";
+import {searchStocks} from "@/lib/actions/finnhub.actions";
 
-const Header = () => {
+const Header = async ({ user }: { user: User }) => {
+    const [initialStocks, initialLocalStocks] = await Promise.all([
+        searchStocks(),
+        searchStocks(undefined, 'local'),
+    ]);
+
     return (
-        <header className="sticky top-0 header">
-            <div className="container header-wrapper">
-                <Link href="/">
-                    <Image src="/assets/icons/port-logo.svg" alt="GMIT Portfolio Logo" width={140} height={32} className="h-8 w-auto cursor-pointer"/>
-                </Link>
-                <nav className="hidden sm:block">
-                    <NavItems />
-                </nav>
+        <header className="nav-shell">
+            <div className="container">
+                <div className="nav-bar">
+                    <HomeLink className="nav-logo">
+                        <Image src="/assets/icons/gmit-mark.svg" alt="" width={28} height={31} className="h-[26px] w-auto" priority />
+                        <RollText className="h-4">
+                            <Image src="/assets/icons/gmit-wordmark.svg" alt="GMIT Portfolio" width={149} height={19} className="block h-4 w-auto" priority />
+                        </RollText>
+                    </HomeLink>
 
-                <UserDropdown />
+                    <div className="hidden md:flex items-center gap-6">
+                        <nav>
+                            <NavItems initialStocks={initialStocks} initialLocalStocks={initialLocalStocks} />
+                        </nav>
+                        <UserDropdown user={user} />
+                    </div>
+
+                    <MobileNav user={user} initialStocks={initialStocks} initialLocalStocks={initialLocalStocks} />
+                </div>
             </div>
         </header>
     )

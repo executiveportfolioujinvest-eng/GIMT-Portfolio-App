@@ -1,75 +1,66 @@
 'use client';
+
 import {
     DropdownMenu,
     DropdownMenuContent,
-    DropdownMenuGroup,
     DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {useRouter} from "next/navigation";
-import {Button} from "@/components/ui/button";
-import {LogOut} from "lucide-react";
-import NavItems from "@/components/NavItems";
+import {usePathname, useRouter} from "next/navigation";
+import {Briefcase, ChevronsUpDown, LogOut} from "lucide-react";
+import RollText from "@/components/RollText";
+import {signOut} from "@/lib/actions/auth.actions";
+import {marketFromPathname, marketHref} from "@/lib/markets";
 
-const UserDropdown = () => {
+export const UserInitial = ({ name, className }: { name: string; className?: string }) => (
+    <span className={`nav-avatar ${className ?? ''}`} aria-hidden="true">
+        {name?.[0]?.toUpperCase()}
+    </span>
+)
+
+const UserDropdown = ({ user }: {user: User}) => {
     const router = useRouter();
+    const pathname = usePathname();
+    const portfolioHref = marketHref(marketFromPathname(pathname), '/portfolio');
 
     const handleSignOut = async () => {
+        await signOut();
         router.push("/sign-in");
     }
 
-    const user = { name: 'Jayson', email: 'contact@gmit.com'};
-
     return (
         <DropdownMenu>
-            <DropdownMenuTrigger
-                render={
-                    <Button variant="ghost" className="flex items-center gap-3 text-gray-4 hover:text-blue-500">
-                        <Avatar className="h-8 w-8">
-                            <AvatarImage src="https://github.com/shadcn.png" />
-                            <AvatarFallback className="bg-blue-500 text-blue-900 text-sm font-bold">
-                                {user.name[0]}
-                            </AvatarFallback>
-                        </Avatar>
-                        <div className="hidden md:flex flex-col items-start">
-                            <span className="text-base font-medium text-gray-400">
-                                {user.name}
-                            </span>
+            <DropdownMenuTrigger asChild>
+                <button type="button" className="nav-cta" aria-label={`Account menu for ${user.name}`}>
+                    <span className="nav-fill" aria-hidden="true" />
+                    <UserInitial name={user.name} />
+                    <RollText className="max-w-40">{user.name}</RollText>
+                    <ChevronsUpDown className="relative h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={12} className="nav-menu min-w-56 rounded-none border-0 bg-blue-500 p-1.5 text-white shadow-xl">
+                <DropdownMenuLabel className="p-0">
+                    <div className="flex items-center gap-3 px-2 py-2">
+                        <UserInitial name={user.name} className="h-8 w-8 text-sm" />
+                        <div className="flex flex-col min-w-0">
+                            <span className="nav-menu-name">{user.name}</span>
+                            <span className="nav-menu-email">{user.email}</span>
                         </div>
-                    </Button>
-                }
-            />
-            <DropdownMenuContent className="text-gray-400 w-auto" collisionPadding={8}>
-                <DropdownMenuGroup>
-                    <DropdownMenuLabel>
-                        <div className="flex relative items-center gap-3 py-2">
-                            <Avatar className="h-10 w-10">
-                                <AvatarImage src="https://github.com/shadcn.png" />
-                                <AvatarFallback className="bg-blue-500 text-blue-900 text-sm font-bold">
-                                    {user.name[0]}
-                                </AvatarFallback>
-                            </Avatar>
-                            <div className="flex flex-col min-w-0">
-                                <span className="text-base font-medium text-gray-400">
-                                    {user.name}
-                                </span>
-                                <span className="text-sm text-gray-500 truncate">{user.email}</span>
-                            </div>
-                        </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator className="bg-gray-600"/>
-                    <DropdownMenuItem onClick={handleSignOut} className="text-gray-100 text-md font-medium focus:bg-transparent focus:text-blue-500 transition-colors cursor-pointer">
-                        <LogOut className="h-4 w-4 mr-2 hidden sm:block" />
-                        Logout
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator className="hidden sm:block bg-gray-600"/>
-                    <nav className="sm:hidden">
-                        <NavItems />
-                    </nav>
-                </DropdownMenuGroup>
+                    </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator className="bg-gray-900/40 mx-0"/>
+                <DropdownMenuItem onClick={() => router.push(portfolioHref)} className="nav-menu-item rounded-none px-2 pt-2 pb-1.5 text-sm cursor-pointer focus:bg-transparent focus:text-white">
+                    <span className="nav-fill" aria-hidden="true" />
+                    <Briefcase className="relative h-4 w-4 text-white" />
+                    <RollText>Portfolio</RollText>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSignOut} className="nav-menu-item rounded-none px-2 pt-2 pb-1.5 text-sm cursor-pointer focus:bg-transparent focus:text-white">
+                    <span className="nav-fill" aria-hidden="true" />
+                    <LogOut className="relative h-4 w-4 text-white" />
+                    <RollText>Logout</RollText>
+                </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
     )

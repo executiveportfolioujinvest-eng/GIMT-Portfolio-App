@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
+import { Toaster } from "@/components/ui/sonner"
 import "./globals.css";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +20,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  label: "GMIT",
+  title: "GMIT Portfolio",
   description: "The home base of active management for the global markets investment team. Bringing tailored alerts and detailed company insights.",
 };
 
@@ -33,7 +34,10 @@ export default function RootLayout({
       lang="en"
       className="dark"
     >
-      <body className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} antialiased`}>{children}</body>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} antialiased`}>
+        {children}
+        <Toaster />
+      </body>
     </html>
   );
 }
