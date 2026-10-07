@@ -102,6 +102,7 @@ export const fetchCompanySnapshot = async (yahooSymbol: string): Promise<Company
         returnOnEquity: raw(fin.returnOnEquity),
         profitMargin: raw(fin.profitMargins),
         dividendRate: raw(detail.dividendRate) ?? raw(detail.trailingAnnualDividendRate),
+        trailingDividendRate: raw(detail.trailingAnnualDividendRate),
         dividendYield: raw(detail.dividendYield) ?? raw(detail.trailingAnnualDividendYield),
         payoutRatio: raw(detail.payoutRatio),
         exDividendDate: date(detail.exDividendDate) ?? date(calendar.exDividendDate),
@@ -177,5 +178,30 @@ export const fetchPeerSnapshot = async (yahooSymbol: string, symbol: string): Pr
         revenueGrowthNextYear: raw(obj(obj(nextYear?.revenueEstimate).growth)),
         change52w: raw(stats['52WeekChange']),
         marketCap: raw(price.marketCap),
+        price: last,
     };
+};
+
+// About ten years of weekly closing prices and every dividend payment, in main currency units
+export const fetchMarketHistory = async (yahooSymbol: string): Promise<{ priceHistory: { date: string; close: number }[]; dividendPayments: { date: string; amount: number }[] }> => {
+    try {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?range=10y&interval=1wk&events=div`;
+        const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, cache: 'no-store' });
+        if (!res.ok) return { priceHistory: [], dividendPayments: [] };
+        const result = ((await res.json()) as { chart?: { result?: Json[] } }).chart?.result?.[0];
+        if (!result) return { priceHistory: [], dividendPayments: [] };
+        const scale = priceScale(text(obj(result.meta).currency));
+        const times = (result.timestamp as number[] | undefined) ?? [];
+        const closes = (list(obj(result.indicators).quote)[0]?.close as (number | null)[] | undefined) ?? [];
+        const day = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
+        const priceHistory = times.flatMap((t, i) => (closes[i] != null ? [{ date: day(t), close: closes[i]! * scale }] : []));
+        const dividendPayments = Object.values(obj(obj(result.events).dividends))
+            .map((d) => obj(d))
+            .flatMap((d) => (raw(d.amount) != null && raw(d.date) != null ? [{ date: day(raw(d.date)!), amount: raw(d.amount)! * scale }] : []))
+            .sort((a, b) => a.date.localeCompare(b.date));
+        return { priceHistory, dividendPayments };
+    } catch (e) {
+        console.error('fetchMarketHistory error:', yahooSymbol, e);
+        return { priceHistory: [], dividendPayments: [] };
+    }
 };

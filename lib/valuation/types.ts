@@ -16,6 +16,7 @@ export type FinancialPeriod = {
     operatingIncome?: number;
     netIncome?: number;
     eps?: number;
+    epsBasic?: number;
     dps?: number;
     totalAssets?: number;
     totalLiabilities?: number;
@@ -31,6 +32,11 @@ export type FinancialPeriod = {
     dividendsPaid?: number;
     depreciation?: number;
     shares?: number;
+    buybacks?: number;
+    incomeTax?: number;
+    pretaxIncome?: number;
+    // Revenue by business segment, when the company's own results show it
+    segments?: { name: string; revenue: number }[];
     sources: DataSource[];
     // Which source each figure came from, when sources were combined
     fieldSources?: Partial<Record<string, DataSource['kind']>>;
@@ -39,9 +45,10 @@ export type FinancialPeriod = {
 };
 
 export const PERIOD_FIELDS = [
-    'revenue', 'grossProfit', 'operatingIncome', 'netIncome', 'eps', 'dps',
+    'revenue', 'grossProfit', 'operatingIncome', 'netIncome', 'eps', 'epsBasic', 'dps',
     'totalAssets', 'totalLiabilities', 'currentAssets', 'currentLiabilities', 'cash', 'totalDebt', 'equity',
     'operatingCashFlow', 'capex', 'freeCashFlow', 'interestExpense', 'dividendsPaid', 'depreciation', 'shares',
+    'buybacks', 'incomeTax', 'pretaxIncome',
 ] as const;
 
 export type PeriodField = (typeof PERIOD_FIELDS)[number];
@@ -73,7 +80,8 @@ export type CompanySnapshot = {
     totalDebt?: number;
     returnOnEquity?: number;
     profitMargin?: number;
-    dividendRate?: number;
+    dividendRate?: number;          // indicated (forward) annual dividend
+    trailingDividendRate?: number;  // dividends paid over the last 12 months
     dividendYield?: number;
     payoutRatio?: number;
     exDividendDate?: string;
@@ -105,6 +113,9 @@ export type CompanySnapshot = {
     officers: Officer[];
     holders: Holder[];
     insiderTrades: InsiderTrade[];
+    // Weekly closing prices and every dividend payment over about ten years (main currency units)
+    priceHistory?: { date: string; close: number }[];
+    dividendPayments?: { date: string; amount: number }[];
 };
 
 export type PeerSnapshot = {
@@ -117,6 +128,8 @@ export type PeerSnapshot = {
     revenueGrowthNextYear?: number;
     change52w?: number;
     marketCap?: number;
+    price?: number;
+    sector?: string;
 };
 
 export type MarketBenchmarks = {
@@ -133,6 +146,8 @@ export type MarketBenchmarks = {
     revenueGrowthNextYear?: number;
     dividendYieldP25?: number;
     dividendYieldP75?: number;
+    // Highest-yielding shares in the market universe, for the dividends section's suggestions
+    topDividendPayers?: PeerSnapshot[];
     updatedAt: string;
 };
 

@@ -1,6 +1,6 @@
 import { connectToDatabase } from '@/database/mongoose';
 import { CompanyFinancials, type CompanyFinancialsData } from '@/database/models/company-financials.model';
-import { fetchCompanySnapshot, fetchPeerSnapshot } from '@/lib/valuation/yahoo-summary';
+import { fetchCompanySnapshot, fetchMarketHistory, fetchPeerSnapshot } from '@/lib/valuation/yahoo-summary';
 import { fetchSecPeriods } from '@/lib/valuation/sec';
 import { fetchYahooPeriods } from '@/lib/valuation/yahoo-statements';
 import { discoverReports, GeminiBusyError, readReport } from '@/lib/valuation/company-reports';
@@ -47,6 +47,7 @@ export const mergePeriods = (existing: FinancialPeriod[], incoming: FinancialPer
             continue;
         }
         current.bySource = { ...current.bySource, [nextKind]: { ...current.bySource?.[nextKind], ...figures } };
+        if (next.segments?.length && (!current.segments?.length || nextKind === 'company')) current.segments = next.segments;
         for (const field of PERIOD_FIELDS) {
             const value = next[field];
             if (value == null) continue;
@@ -95,20 +96,29 @@ export const startCollection = async (market: MarketKey, symbol: string, request
     );
 };
 
-const save = (key: string, update: Partial<CompanyFinancialsData> & Record<string, unknown>) =>
-    CompanyFinancials.updateOne({ key }, { $set: { ...update, updatedAt: new Date(), leaseUntil: null } });
+// Fields passed as undefined are removed (MongoDB ignores undefined in $set, which left stale progress messages)
+const save = (key: string, update: Partial<CompanyFinancialsData> & Record<string, unknown>) => {
+    const cleared = Object.keys(update).filter((k) => update[k] === undefined);
+    const set = Object.fromEntries(Object.entries(update).filter(([, v]) => v !== undefined));
+    return CompanyFinancials.updateOne(
+        { key },
+        { $set: { ...set, updatedAt: new Date(), leaseUntil: null }, ...(cleared.length ? { $unset: Object.fromEntries(cleared.map((k) => [k, 1])) } : {}) }
+    );
+};
 
 const stepBasics = async (doc: CompanyFinancialsData) => {
     const { market, symbol, key } = doc;
-    const [snapshot, sec, yahoo, peers] = await Promise.all([
+    const [rawSnapshot, sec, yahoo, peers, history] = await Promise.all([
         fetchCompanySnapshot(yahooSymbolFor(market, symbol)),
         market === 'global' ? fetchSecPeriods(symbol).catch(() => null) : Promise.resolve(null),
         fetchYahooPeriods(yahooSymbolFor(market, symbol)),
         loadPeers(market, symbol).catch(() => []),
+        fetchMarketHistory(yahooSymbolFor(market, symbol)),
         // Warm the market figures (cached for a day) so the report renders quickly
         getBenchmarks(market).catch((e) => console.error('getBenchmarks error:', e)),
     ]);
 
+    const snapshot = rawSnapshot ? { ...rawSnapshot, ...history } : null;
     if (!snapshot && !yahoo.length && !sec?.periods.length) {
         await save(key, { phase: 'done', status: doc.periods.length ? 'ready' : 'failed', message: `No financial data was found for ${symbol}` });
         return;
@@ -229,4 +239,20 @@ export const runCollection = async (market: MarketKey, symbol: string, maxSteps 
         if (!state || state.phase === 'done') break;
     }
     return state;
+};
+
+// Re-fetches the live market side (price, dividends, analysts, ownership, peers and market figures) without
+// re-reading any financial statements
+export const refreshMarketSnapshot = async (market: MarketKey, symbol: string) => {
+    await connectToDatabase();
+    const key = collectionKey(market, symbol);
+    const [snapshot, history, peers] = await Promise.all([
+        fetchCompanySnapshot(yahooSymbolFor(market, symbol)),
+        fetchMarketHistory(yahooSymbolFor(market, symbol)),
+        loadPeers(market, symbol).catch(() => null),
+        getBenchmarks(market, true).catch((e) => console.error('getBenchmarks error:', e)),
+    ]);
+    if (!snapshot) return false;
+    await CompanyFinancials.updateOne({ key }, { $set: { snapshot: { ...snapshot, ...history }, ...(peers ? { peers } : {}), updatedAt: new Date() } });
+    return true;
 };

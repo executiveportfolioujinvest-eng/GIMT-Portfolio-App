@@ -6,15 +6,22 @@ import type {
 } from '@/lib/valuation/types';
 
 // Turns a company's stored figures, market data and benchmarks into the Valuation tab's report.
-// Methods are standard ones (discounted cash flow, residual income, peer multiples); every assumption is shown.
+// Methods are standard ones (discounted cash flow to the firm and to equity, residual income, peer multiples);
+// every assumption is shown alongside the result.
 
 export const LEARN = {
     dcf: 'https://www.investopedia.com/terms/d/dcf.asp',
+    fcff: 'https://www.investopedia.com/terms/f/freecashflowtofirm.asp',
+    fcfe: 'https://www.investopedia.com/terms/f/freecashflowtoequity.asp',
+    wacc: 'https://www.investopedia.com/terms/w/wacc.asp',
+    terminalValue: 'https://www.investopedia.com/terms/t/terminalvalue.asp',
+    enterpriseValue: 'https://www.investopedia.com/terms/e/enterprisevalue.asp',
     residualIncome: 'https://www.investopedia.com/terms/r/residualincome.asp',
     capm: 'https://www.investopedia.com/terms/c/capm.asp',
     beta: 'https://www.investopedia.com/terms/b/beta.asp',
     pe: 'https://www.investopedia.com/terms/p/price-earningsratio.asp',
     pb: 'https://www.investopedia.com/terms/p/price-to-bookratio.asp',
+    eps: 'https://www.investopedia.com/terms/e/eps.asp',
     evEbitda: 'https://www.investopedia.com/terms/e/ev-ebitda.asp',
     priceTarget: 'https://www.investopedia.com/terms/p/pricetarget.asp',
     roe: 'https://www.investopedia.com/terms/r/returnonequity.asp',
@@ -26,6 +33,8 @@ export const LEARN = {
     interestCover: 'https://www.investopedia.com/terms/i/interestcoverageratio.asp',
     currentRatio: 'https://www.investopedia.com/terms/c/currentratio.asp',
     dividendYield: 'https://www.investopedia.com/terms/d/dividendyield.asp',
+    buybackYield: 'https://www.investopedia.com/terms/s/sharerepurchase.asp',
+    shareholderYield: 'https://www.investopedia.com/terms/s/shareholderyield.asp',
     payout: 'https://www.investopedia.com/terms/p/payoutratio.asp',
     insider: 'https://www.investopedia.com/terms/i/insidertrading.asp',
 } as const;
@@ -34,17 +43,59 @@ export const LEARN = {
 const EQUITY_RISK_PREMIUM: Record<MarketKey, number> = { global: 0.055, local: 0.075 };
 // Long-run growth can't outpace the economy, so the bond-yield-based terminal growth is capped
 const TERMINAL_GROWTH_CAP: Record<MarketKey, number> = { global: 0.04, local: 0.055 };
+// Statutory company tax, used when the effective rate can't be worked out from the accounts
+const STATUTORY_TAX: Record<MarketKey, number> = { global: 0.21, local: 0.27 };
 const PROJECTION_YEARS = 10;
+
+export type SourcePreference = 'auto' | SourceKind;
 
 export type Indicator = { label: string; pass: boolean | null; detail: string; learn?: string };
 
-export type StatementRow = FinancialPeriod & { label: string };
+export type StatementRow = FinancialPeriod & { label: string; roe?: number };
+
+export type ModelResult = {
+    key: 'fcff' | 'fcfe' | 'residual';
+    label: string;
+    perShare?: number;
+    enterpriseValue?: number;
+    equityValue?: number;
+    terminalValue?: number;     // value of everything after the forecast years, at that future date
+    terminalValuePv?: number;   // the same, in today's money
+    discountRate?: number;
+    note?: string;
+};
+
+export type RevenueFlow = {
+    label: string;
+    end: string;
+    kind: FinancialPeriod['kind'];
+    segments: { name: string; revenue: number }[];
+    revenue: number;
+    costOfRevenue?: number;
+    grossProfit?: number;
+    operatingExpenses?: number;
+    operatingIncome?: number;
+    financeCosts?: number;
+    tax?: number;
+    otherItems?: number;
+    netIncome?: number;
+};
+
+export type HealthPoint = {
+    label: string;
+    end: string;
+    kind: FinancialPeriod['kind'];
+    totalAssets?: number; totalLiabilities?: number; currentAssets?: number; currentLiabilities?: number; nonCurrentLiabilities?: number;
+    nonCurrentAssets?: number; cash?: number; debt?: number; equity?: number;
+    debtToEquity?: number; netCash?: number; currentRatio?: number; interestCover?: number; cashFlowToDebt?: number;
+};
 
 export type ValuationReport = {
     market: MarketKey;
     symbol: string;
     company: string;
     currency: string;
+    sourcePreference: SourcePreference;
     phase: CompanyFinancialsData['phase'];
     message?: string;
     websiteNote?: string;
@@ -55,6 +106,8 @@ export type ValuationReport = {
     benchmarks: MarketBenchmarks | null;
     price?: number;
     ratios: { pe?: number; pb?: number; evEbitda?: number; dividendYield?: number; marketCap?: number };
+    perShare: { epsDiluted?: number; epsBasic?: number; bookValue?: number; dps?: number; roe?: number };
+    enterprise: { marketEv?: number; marketCap?: number; debt?: number; cash?: number; netDebt?: number; wacc?: number; costOfDebt?: number; taxRate?: number };
     fairValue: {
         method: 'cash-flow' | 'residual-income' | null;
         value?: number;
@@ -62,12 +115,13 @@ export type ValuationReport = {
         reason?: string;
         costOfEquity?: number;
         terminalGrowth?: number;
+        models: ModelResult[];
         inputs: { label: string; value: string; learn?: string }[];
         projections: { year: number; cashFlow: number; presentValue: number }[];
         presentValueOfCashFlows?: number;
-        presentValueOfTerminal?: number;
     };
-    analysts: { mean?: number; high?: number; low?: number; count?: number; upside?: number; recommendation?: string };
+    cashFlows: { label: string; end: string; operatingCashFlow?: number; capex?: number; fcf?: number; fcff?: number; fcfe?: number; netBorrowing?: number; taxRate?: number }[];
+    analysts: { mean?: number; high?: number; low?: number; count?: number; upside?: number; recommendation?: string; priceHistory: { date: string; close: number }[] };
     relative: { metric: 'P/E' | 'P/B'; company?: number; peersAverage?: number; marketMedian?: number; impliedByModel?: number; peers: PeerSnapshot[] };
     growth: {
         earningsThisYear?: number; earningsNextYear?: number; revenueThisYear?: number; revenueNextYear?: number;
@@ -80,19 +134,24 @@ export type ValuationReport = {
         recentLabel: string;
         revenueGrowth1y?: number; revenueCagr?: number; earningsGrowth1y?: number; earningsCagr?: number;
         cagrYears?: number; netMargin?: number; netMarginPrior?: number; roe?: number; roa?: number; cashConversion?: number;
+        flows: RevenueFlow[];
     };
     health: {
         asOf?: string;
         totalAssets?: number; totalLiabilities?: number; currentAssets?: number; currentLiabilities?: number; nonCurrentLiabilities?: number;
         cash?: number; debt?: number; equity?: number; debtToEquity?: number; debtToEquityEarliest?: number; earliestYear?: string;
         netCash?: number; interestCover?: number; cashFlowToDebt?: number; currentRatio?: number;
-        history: { end: string; debt?: number; equity?: number; cash?: number }[];
+        series: HealthPoint[];
     };
     dividends: {
-        yield?: number; rate?: number; payoutRatio?: number; cashPayoutRatio?: number; marketLow?: number; marketHigh?: number;
-        exDate?: string; payDate?: string; growth?: number; history: { end: string; dps: number }[];
+        yield?: number; trailingDps?: number; forwardRate?: number; forwardYield?: number; buybackYield?: number; shareholderYield?: number;
+        payoutRatio?: number; cashPayoutRatio?: number; marketLow?: number; marketHigh?: number; industryAverage?: number;
+        exDate?: string; payDate?: string; growth?: number;
+        payments: { date: string; amount: number }[];
+        annual: { year: number; amount: number; yield?: number; partial: boolean }[];
     };
     people: { officers: Officer[]; insidersPct?: number; institutionsPct?: number; publicPct?: number; holders: Holder[]; trades: InsiderTrade[]; netInsiderSelling?: boolean };
+    discover: { cheapPeers: PeerSnapshot[]; dividendPayers: PeerSnapshot[]; medianPe?: number };
     indicators: Record<'value' | 'growth' | 'performance' | 'health' | 'dividends', Indicator[]>;
     highlights: { strengths: string[]; watch: string[] };
 };
@@ -107,6 +166,7 @@ const mean = (values: (number | undefined)[]) => {
 };
 const cagr = (latest?: number, earliest?: number, years?: number) =>
     num(latest) && num(earliest) && years && latest > 0 && earliest > 0 ? (latest / earliest) ** (1 / years) - 1 : undefined;
+const big = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 0 });
 
 const fiscalLabel = (p: FinancialPeriod) => {
     const [y, m] = p.end.split('-');
@@ -122,14 +182,14 @@ const isFinancialCompany = (s?: CompanySnapshot | null) => /bank|insur|financial
 const SOURCE_ORDER: SourceKind[] = ['sec', 'company', 'yahoo'];
 
 // Sources define some lines differently (an insurer's "revenue" may be insurance revenue in its own results but
-// total income on Yahoo), so each line of a series is taken from the one source that covers the most periods,
-// falling back to another source only where that one has a gap
-const harmonise = (series: FinancialPeriod[]): FinancialPeriod[] => {
-    if (series.length < 2) return series;
+// total income on Yahoo), so each line of a series is taken from one source: the one the viewer prefers when it
+// has that line, otherwise the one covering the most periods; other sources only fill that source's gaps
+const harmonise = (series: FinancialPeriod[], preference: SourcePreference): FinancialPeriod[] => {
     const chosen = new Map<string, SourceKind>();
     for (const field of PERIOD_FIELDS) {
         const coverage = SOURCE_ORDER.map((kind) => ({ kind, n: series.filter((p) => num(p.bySource?.[kind]?.[field])).length }));
-        const best = coverage.reduce((a, b) => (b.n > a.n ? b : a));
+        const preferred = preference !== 'auto' ? coverage.find((c) => c.kind === preference && c.n > 0) : undefined;
+        const best = preferred ?? coverage.reduce((a, b) => (b.n > a.n ? b : a));
         if (best.n > 0) chosen.set(field, best.kind);
     }
     return series.map((p) => {
@@ -146,19 +206,48 @@ const harmonise = (series: FinancialPeriod[]): FinancialPeriod[] => {
     });
 };
 
-export const buildReport = (data: CompanyFinancialsData, benchmarks: MarketBenchmarks | null, livePrice?: number): ValuationReport => {
+const taxRateOf = (p: FinancialPeriod | undefined, market: MarketKey) => {
+    const effective = ratio(p?.incomeTax, p?.pretaxIncome);
+    return num(effective) && num(p?.pretaxIncome) && p!.pretaxIncome! > 0 && effective >= 0 && effective <= 0.45 ? effective : STATUTORY_TAX[market];
+};
+
+// Discounts a cash flow that grows at `startGrowth`, fading in a straight line to `terminalGrowth` by year ten
+const discountCashFlows = (base: number, startGrowth: number, terminalGrowth: number, rate: number) => {
+    let cashFlow = base;
+    let pvSum = 0;
+    const projections: { year: number; cashFlow: number; presentValue: number }[] = [];
+    for (let year = 1; year <= PROJECTION_YEARS; year++) {
+        const growth = startGrowth + (terminalGrowth - startGrowth) * ((year - 1) / (PROJECTION_YEARS - 1));
+        cashFlow *= 1 + growth;
+        const presentValue = cashFlow / (1 + rate) ** year;
+        pvSum += presentValue;
+        projections.push({ year: new Date().getFullYear() + year, cashFlow, presentValue });
+    }
+    const terminalValue = (cashFlow * (1 + terminalGrowth)) / (rate - terminalGrowth);
+    const terminalValuePv = terminalValue / (1 + rate) ** PROJECTION_YEARS;
+    return { projections, pvSum, terminalValue, terminalValuePv };
+};
+
+export const buildReport = (
+    data: CompanyFinancialsData,
+    benchmarks: MarketBenchmarks | null,
+    livePrice?: number,
+    sourcePreference: SourcePreference = 'auto',
+): ValuationReport => {
     const { market, symbol } = data;
     const s = data.snapshot ?? null;
     const price = livePrice ?? s?.price;
     const sorted = [...(data.periods ?? [])].sort((a, b) => b.end.localeCompare(a.end));
-    const periods = (['annual', 'interim', 'quarter', 'ytd'] as const).flatMap((kind) => harmonise(sorted.filter((p) => p.kind === kind)))
+    const periods = (['annual', 'interim', 'quarter', 'ytd'] as const)
+        .flatMap((kind) => harmonise(sorted.filter((p) => p.kind === kind), sourcePreference))
         .sort((a, b) => b.end.localeCompare(a.end));
     const annual = periods.filter((p) => p.kind === 'annual').slice(0, 5);
     const latest = annual[0];
     const shares = s?.sharesOutstanding ?? latest?.shares;
     const sameCurrency = !s || s.financialCurrency === s.currency;
+    const financial = isFinancialCompany(s);
 
-    // ---- Ratios
+    // ---- Ratios and per-share figures
     const eps = s?.trailingEps ?? latest?.eps;
     const bookPerShare = s?.bookValuePerShare ?? ratio(latest?.equity, shares);
     const pe = num(price) && num(eps) && eps > 0 && sameCurrency ? price / eps : undefined;
@@ -166,14 +255,40 @@ export const buildReport = (data: CompanyFinancialsData, benchmarks: MarketBench
     // Negative for many banks and insurers (cash exceeds debt plus market value), where the ratio means nothing
     const evRaw = ratio(s?.enterpriseValue, s?.ebitda);
     const evEbitda = num(evRaw) && evRaw > 0 && num(s?.enterpriseValue) && s!.enterpriseValue! > 0 ? evRaw : undefined;
+    const roeOf = (p: FinancialPeriod, prior?: FinancialPeriod) => ratio(p.netIncome, mean([p.equity, prior?.equity]));
+
+    // ---- Balance sheet basics shared by the models
+    const sheet = periods.find((p) => num(p.totalAssets));
+    const debt = sheet?.totalDebt ?? s?.totalDebt;
+    const cash = sheet?.cash ?? s?.totalCash;
+    const netDebt = num(debt) && num(cash) ? debt - cash : undefined;
+    const marketCap = s?.marketCap ?? (num(price) && num(shares) ? price * shares : undefined);
+    const taxRate = taxRateOf(latest, market);
+
+    // ---- Cash flows to the firm and to equity, by year
+    const cashFlows = annual.map((p, i) => {
+        const prior = annual[i + 1];
+        const t = taxRateOf(p, market);
+        const netBorrowing = num(p.totalDebt) && num(prior?.totalDebt) ? p.totalDebt - prior!.totalDebt! : undefined;
+        const fcff = num(p.operatingCashFlow) ? p.operatingCashFlow + (p.interestExpense ?? 0) * (1 - t) - (p.capex ?? 0) : undefined;
+        const fcfe = num(p.operatingCashFlow) ? p.operatingCashFlow - (p.capex ?? 0) + (netBorrowing ?? 0) : undefined;
+        return { label: fiscalLabel(p), end: p.end, operatingCashFlow: p.operatingCashFlow, capex: p.capex, fcf: p.freeCashFlow, fcff, fcfe, netBorrowing, taxRate: t };
+    });
 
     // ---- Fair value
     const rf = benchmarks?.riskFreeRate;
     const beta = clamp(s?.beta ?? 1, 0.8, 2);
     const costOfEquity = num(rf) ? rf + beta * EQUITY_RISK_PREMIUM[market] : undefined;
     const terminalGrowth = num(benchmarks?.riskFreeAverage) ? Math.min(benchmarks!.riskFreeAverage, TERMINAL_GROWTH_CAP[market]) : undefined;
-    const fairValue: ValuationReport['fairValue'] = { method: null, inputs: [], projections: [] };
-    const financial = isFinancialCompany(s);
+    const fairValue: ValuationReport['fairValue'] = { method: null, models: [], inputs: [], projections: [] };
+    const avgDebt = mean([latest?.totalDebt, annual[1]?.totalDebt]);
+    const costOfDebt = num(latest?.interestExpense) && num(avgDebt) && avgDebt > 0
+        ? clamp(latest.interestExpense / avgDebt, 0.02, 0.15)
+        : num(rf) ? rf + 0.02 : undefined;
+    const debtWeight = num(debt) && num(marketCap) && debt > 0 ? debt / (debt + marketCap) : 0;
+    const wacc = num(costOfEquity) && num(costOfDebt) ? (1 - debtWeight) * costOfEquity + debtWeight * costOfDebt * (1 - taxRate) : undefined;
+    const historicGrowth = cagr(annual[0]?.netIncome, annual[annual.length - 1]?.netIncome, annual.length - 1);
+    const startGrowth = num(terminalGrowth) ? clamp(s?.earningsGrowthNextYear ?? historicGrowth ?? terminalGrowth, -0.05, 0.2) : 0;
 
     if (!num(costOfEquity) || !num(terminalGrowth)) {
         fairValue.reason = 'Market bond yields are unavailable right now, so the estimate can’t be calculated.';
@@ -181,57 +296,89 @@ export const buildReport = (data: CompanyFinancialsData, benchmarks: MarketBench
         fairValue.reason = `The company reports in ${s?.financialCurrency} but trades in ${s?.currency}, so the estimate isn’t comparable with the share price.`;
     } else if (!num(shares) || shares <= 0) {
         fairValue.reason = 'The number of shares in issue is unavailable.';
-    } else if (financial) {
-        // Residual income: book value plus the value of returns earned above the cost of equity
-        const roes = annual.map((p, i) => ratio(p.netIncome, mean([p.equity, annual[i + 1]?.equity])));
-        const roe = clamp(mean([...roes, s?.returnOnEquity]) ?? 0, 0, 0.4);
-        if (num(bookPerShare) && bookPerShare > 0 && costOfEquity > terminalGrowth) {
-            const excess = (roe - costOfEquity) * bookPerShare;
-            const value = bookPerShare + excess / (costOfEquity - terminalGrowth);
-            Object.assign(fairValue, { method: 'residual-income', value, costOfEquity, terminalGrowth });
-            fairValue.inputs = [
-                { label: 'Book value per share', value: bookPerShare.toFixed(2), learn: LEARN.pb },
-                { label: 'Return on equity (average)', value: pct(roe), learn: LEARN.roe },
-                { label: 'Cost of equity', value: pct(costOfEquity), learn: LEARN.capm },
-                { label: 'Excess return per share', value: excess.toFixed(2), learn: LEARN.residualIncome },
-                { label: 'Long-term growth', value: pct(terminalGrowth) },
-            ];
-        } else {
-            fairValue.reason = 'Book value is unavailable, so the residual-income estimate can’t be calculated.';
-        }
     } else {
-        // Discounted free cash flow over ten years, growth fading from the forecast to the long-term rate
-        const recentFcf = annual.slice(0, 3).map((p) => p.freeCashFlow).filter(num);
-        const baseFcf = mean(recentFcf);
-        const base = num(baseFcf) && baseFcf > 0 ? baseFcf : num(latest?.netIncome) && latest.netIncome > 0 ? latest.netIncome : undefined;
-        const historicGrowth = cagr(annual[0]?.netIncome, annual[annual.length - 1]?.netIncome, annual.length - 1);
-        const startGrowth = clamp(s?.earningsGrowthNextYear ?? historicGrowth ?? terminalGrowth, -0.05, 0.2);
-        if (num(base) && costOfEquity > terminalGrowth) {
-            let cashFlow = base;
-            let pvSum = 0;
-            for (let year = 1; year <= PROJECTION_YEARS; year++) {
-                const growth = startGrowth + (terminalGrowth - startGrowth) * ((year - 1) / (PROJECTION_YEARS - 1));
-                cashFlow *= 1 + growth;
-                const presentValue = cashFlow / (1 + costOfEquity) ** year;
-                pvSum += presentValue;
-                fairValue.projections.push({ year: new Date().getFullYear() + year, cashFlow, presentValue });
+        // Firm: free cash flow to the firm at the weighted cost of capital gives enterprise value; less net debt is equity
+        const recentFcff = cashFlows.slice(0, 3).map((c) => c.fcff).filter(num);
+        const fcffBase = mean(recentFcff);
+        const ebitAfterTax = num(latest?.operatingIncome) && latest.operatingIncome > 0 ? latest.operatingIncome * (1 - taxRate) : undefined;
+        const firmBase = num(fcffBase) && fcffBase > 0 ? fcffBase : ebitAfterTax;
+        if (!financial && num(firmBase) && num(wacc) && wacc > terminalGrowth + 0.01) {
+            const run = discountCashFlows(firmBase, startGrowth, terminalGrowth, wacc);
+            const enterpriseValue = run.pvSum + run.terminalValuePv;
+            const equityValue = enterpriseValue - (netDebt ?? 0);
+            fairValue.models.push({
+                key: 'fcff', label: 'Cash flow to the firm (FCFF)', perShare: equityValue / shares, enterpriseValue, equityValue,
+                terminalValue: run.terminalValue, terminalValuePv: run.terminalValuePv, discountRate: wacc,
+                note: num(netDebt) ? undefined : 'Net debt unavailable; enterprise value used as equity value',
+            });
+            if (!fairValue.projections.length) Object.assign(fairValue, { projections: run.projections, presentValueOfCashFlows: run.pvSum });
+        }
+
+        // Equity: free cash flow to equity (after debt flows) at the cost of equity gives equity value directly
+        const recentFcfe = cashFlows.slice(0, 3).map((c) => c.fcfe).filter(num);
+        const fcfeBase = mean(recentFcfe);
+        const equityBase = num(fcfeBase) && fcfeBase > 0 ? fcfeBase : num(latest?.netIncome) && latest.netIncome > 0 ? latest.netIncome : undefined;
+        if (!financial && num(equityBase) && costOfEquity > terminalGrowth + 0.01) {
+            const run = discountCashFlows(equityBase, startGrowth, terminalGrowth, costOfEquity);
+            const equityValue = run.pvSum + run.terminalValuePv;
+            fairValue.models.push({
+                key: 'fcfe', label: 'Cash flow to equity (FCFE)', perShare: equityValue / shares, equityValue,
+                enterpriseValue: num(netDebt) ? equityValue + netDebt : undefined,
+                terminalValue: run.terminalValue, terminalValuePv: run.terminalValuePv, discountRate: costOfEquity,
+            });
+            if (!fairValue.projections.length) Object.assign(fairValue, { projections: run.projections, presentValueOfCashFlows: run.pvSum });
+        }
+
+        // Banks and insurers: book value plus the value of returns earned above the cost of equity
+        if (financial) {
+            const roes = annual.map((p, i) => roeOf(p, annual[i + 1]));
+            const roe = clamp(mean([...roes, s?.returnOnEquity]) ?? 0, 0, 0.4);
+            if (num(bookPerShare) && bookPerShare > 0 && costOfEquity > terminalGrowth) {
+                const excess = (roe - costOfEquity) * bookPerShare;
+                const terminalPerShare = excess / (costOfEquity - terminalGrowth);
+                const perShare = bookPerShare + terminalPerShare;
+                fairValue.models.push({
+                    key: 'residual', label: 'Residual income (book value plus excess returns)', perShare,
+                    equityValue: perShare * shares, enterpriseValue: num(netDebt) ? perShare * shares + netDebt : undefined,
+                    terminalValue: terminalPerShare * shares, terminalValuePv: terminalPerShare * shares, discountRate: costOfEquity,
+                    note: 'The terminal value here is the value of all future returns above the cost of equity',
+                });
+                fairValue.inputs.push(
+                    { label: 'Book value per share', value: bookPerShare.toFixed(2), learn: LEARN.pb },
+                    { label: 'Return on equity (average)', value: pct(roe), learn: LEARN.roe },
+                    { label: 'Excess return per share', value: excess.toFixed(2), learn: LEARN.residualIncome },
+                );
             }
-            const terminal = (cashFlow * (1 + terminalGrowth)) / (costOfEquity - terminalGrowth);
-            const pvTerminal = terminal / (1 + costOfEquity) ** PROJECTION_YEARS;
-            const value = (pvSum + pvTerminal) / shares;
-            Object.assign(fairValue, { method: 'cash-flow', value, costOfEquity, terminalGrowth, presentValueOfCashFlows: pvSum, presentValueOfTerminal: pvTerminal });
-            fairValue.inputs = [
-                { label: num(baseFcf) && baseFcf > 0 ? `Free cash flow (average of last ${recentFcf.length} years)` : 'Net profit (free cash flow was negative)', value: base.toLocaleString('en-US', { maximumFractionDigits: 0 }), learn: LEARN.fcf },
-                { label: s?.earningsGrowthNextYear != null ? 'Starting growth (analyst forecast)' : 'Starting growth (past earnings trend)', value: pct(startGrowth) },
-                { label: 'Long-term growth (bond yield, capped)', value: pct(terminalGrowth) },
+        }
+
+        const headline = fairValue.models[0];
+        if (headline) {
+            fairValue.method = headline.key === 'residual' ? 'residual-income' : 'cash-flow';
+            fairValue.value = headline.perShare;
+            fairValue.costOfEquity = costOfEquity;
+            fairValue.terminalGrowth = terminalGrowth;
+            if (headline.key !== 'residual') {
+                fairValue.inputs.push(
+                    { label: headline.key === 'fcff' ? 'Free cash flow to the firm (average of recent years)' : 'Free cash flow to equity (average of recent years)', value: big(headline.key === 'fcff' ? firmBase! : equityBase!), learn: headline.key === 'fcff' ? LEARN.fcff : LEARN.fcfe },
+                    { label: s?.earningsGrowthNextYear != null ? 'Starting growth (analyst forecast)' : 'Starting growth (past earnings trend)', value: pct(startGrowth) },
+                    { label: 'Cost of debt (after tax)', value: pct(num(costOfDebt) ? costOfDebt * (1 - taxRate) : undefined) },
+                    { label: 'Debt share of capital', value: pct(debtWeight) },
+                    { label: 'Weighted cost of capital (WACC)', value: pct(wacc), learn: LEARN.wacc },
+                    { label: 'Tax rate', value: pct(taxRate) },
+                );
+            }
+            fairValue.inputs.push(
+                { label: 'Long-term growth (bond yield, capped)', value: pct(terminalGrowth), learn: LEARN.terminalValue },
                 { label: '10-year bond yield', value: pct(rf), learn: benchmarks?.riskFreeSource.url },
                 { label: 'Beta (limited to 0.8 to 2)', value: beta.toFixed(2), learn: LEARN.beta },
                 { label: 'Equity risk premium', value: pct(EQUITY_RISK_PREMIUM[market]) },
-                { label: 'Discount rate (cost of equity)', value: pct(costOfEquity), learn: LEARN.capm },
-                { label: 'Shares in issue', value: shares.toLocaleString('en-US', { maximumFractionDigits: 0 }) },
-            ];
+                { label: 'Cost of equity', value: pct(costOfEquity), learn: LEARN.capm },
+                { label: 'Shares in issue', value: big(shares) },
+            );
         } else {
-            fairValue.reason = 'Free cash flow and profit are both negative, so a cash-flow estimate isn’t meaningful.';
+            fairValue.reason = financial
+                ? 'Book value is unavailable, so the residual-income estimate can’t be calculated.'
+                : 'Cash flows and profits are negative, so a cash-flow estimate isn’t meaningful.';
         }
     }
     if (num(fairValue.value) && num(price) && price > 0) fairValue.difference = fairValue.value / price - 1;
@@ -249,10 +396,12 @@ export const buildReport = (data: CompanyFinancialsData, benchmarks: MarketBench
         peers,
     };
 
-    // ---- Analysts
+    // ---- Analysts, with two years of prices for the target chart
+    const twoYearsAgo = new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const analysts = {
         mean: s?.targetMean, high: s?.targetHigh, low: s?.targetLow, count: s?.analystCount, recommendation: s?.recommendation,
         upside: num(s?.targetMean) && num(price) ? s!.targetMean! / price - 1 : undefined,
+        priceHistory: (s?.priceHistory ?? []).filter((p) => p.date >= twoYearsAgo),
     };
 
     // ---- Growth outlook
@@ -265,7 +414,7 @@ export const buildReport = (data: CompanyFinancialsData, benchmarks: MarketBench
     };
 
     // ---- Performance
-    const label = (p: FinancialPeriod): StatementRow => ({ ...p, label: fiscalLabel(p) });
+    const withRoe = (list: FinancialPeriod[]) => list.map((p, i): StatementRow => ({ ...p, label: fiscalLabel(p), roe: p.kind === 'annual' ? roeOf(p, list[i + 1]) : undefined }));
     const quarters = periods.filter((p) => p.kind === 'quarter').slice(0, 8);
     const halves = periods.filter((p) => p.kind === 'interim').slice(0, 6);
     const ytd = periods.filter((p) => p.kind === 'ytd').slice(0, 2);
@@ -275,56 +424,99 @@ export const buildReport = (data: CompanyFinancialsData, benchmarks: MarketBench
         : [];
     const oldest = annual[annual.length - 1];
     const years = annual.length - 1;
+    const flowOf = (p: FinancialPeriod): RevenueFlow | null => {
+        if (!num(p.revenue) || p.revenue <= 0) return null;
+        const costOfRevenue = num(p.grossProfit) ? p.revenue - p.grossProfit : undefined;
+        const operatingExpenses = num(p.operatingIncome) ? (num(p.grossProfit) ? p.grossProfit : p.revenue) - p.operatingIncome : undefined;
+        const otherItems = num(p.operatingIncome) && num(p.netIncome)
+            ? p.operatingIncome - (p.interestExpense ?? 0) - (p.incomeTax ?? 0) - p.netIncome
+            : undefined;
+        return {
+            label: fiscalLabel(p), end: p.end, kind: p.kind, segments: p.segments ?? [], revenue: p.revenue,
+            costOfRevenue, grossProfit: p.grossProfit, operatingExpenses, operatingIncome: p.operatingIncome,
+            financeCosts: p.interestExpense, tax: p.incomeTax, otherItems, netIncome: p.netIncome,
+        };
+    };
     const performance: ValuationReport['performance'] = {
-        annual: annual.map(label),
-        toDate: toDate.map(label),
-        recent: (quarters.length ? quarters : halves).map(label),
+        annual: withRoe(annual),
+        toDate: withRoe(toDate),
+        recent: withRoe(quarters.length ? quarters : halves),
         recentLabel: quarters.length ? 'Quarterly' : 'Half-yearly',
-        revenueGrowth1y: annual[1] ? ratio(latest?.revenue, annual[1].revenue)! - 1 : undefined,
+        revenueGrowth1y: annual[1] && num(ratio(latest?.revenue, annual[1].revenue)) ? ratio(latest?.revenue, annual[1].revenue)! - 1 : undefined,
         revenueCagr: cagr(latest?.revenue, oldest?.revenue, years),
         earningsGrowth1y: annual[1] && num(annual[1].netIncome) && annual[1].netIncome > 0 ? ratio(latest?.netIncome, annual[1].netIncome)! - 1 : undefined,
         earningsCagr: cagr(latest?.netIncome, oldest?.netIncome, years),
         cagrYears: years > 0 ? years : undefined,
         netMargin: ratio(latest?.netIncome, latest?.revenue),
         netMarginPrior: ratio(annual[1]?.netIncome, annual[1]?.revenue),
-        roe: ratio(latest?.netIncome, mean([latest?.equity, annual[1]?.equity])) ?? s?.returnOnEquity,
+        roe: (latest ? roeOf(latest, annual[1]) : undefined) ?? s?.returnOnEquity,
         roa: ratio(latest?.netIncome, latest?.totalAssets),
         cashConversion: num(latest?.netIncome) && latest.netIncome > 0 ? ratio(latest.operatingCashFlow, latest.netIncome) : undefined,
+        // Annual and half-year flows, newest first, for the year-by-year revenue breakdown
+        flows: [...annual, ...halves].sort((a, b) => b.end.localeCompare(a.end)).map(flowOf).filter((f): f is RevenueFlow => !!f),
     };
-    if (performance.revenueGrowth1y != null && !num(performance.revenueGrowth1y)) performance.revenueGrowth1y = undefined;
 
-    // ---- Balance sheet (most recent period that has one)
-    const sheet = periods.find((p) => num(p.totalAssets));
+    // ---- Balance sheet, now and for every reported period (so the charts can step between years)
     const earliest = [...annual].reverse().find((p) => num(p.equity) && p.equity > 0);
+    const pointOf = (p: FinancialPeriod): HealthPoint => ({
+        label: fiscalLabel(p), end: p.end, kind: p.kind,
+        totalAssets: p.totalAssets, totalLiabilities: p.totalLiabilities, currentAssets: p.currentAssets, currentLiabilities: p.currentLiabilities,
+        nonCurrentLiabilities: num(p.totalLiabilities) && num(p.currentLiabilities) ? p.totalLiabilities - p.currentLiabilities : undefined,
+        nonCurrentAssets: num(p.totalAssets) && num(p.currentAssets) ? p.totalAssets - p.currentAssets : undefined,
+        cash: p.cash, debt: p.totalDebt, equity: p.equity,
+        debtToEquity: ratio(p.totalDebt, p.equity),
+        netCash: num(p.cash) && num(p.totalDebt) ? p.cash - p.totalDebt : undefined,
+        currentRatio: ratio(p.currentAssets, p.currentLiabilities),
+        interestCover: num(p.interestExpense) && p.interestExpense > 0 ? ratio(p.operatingIncome, p.interestExpense) : undefined,
+        // Cash flow over debt only means something for a full year
+        cashFlowToDebt: p.kind === 'annual' && num(p.totalDebt) && p.totalDebt > 0 ? ratio(p.operatingCashFlow, p.totalDebt) : undefined,
+    });
     const health: ValuationReport['health'] = {
         asOf: sheet?.end,
         totalAssets: sheet?.totalAssets, totalLiabilities: sheet?.totalLiabilities,
         currentAssets: sheet?.currentAssets, currentLiabilities: sheet?.currentLiabilities,
         nonCurrentLiabilities: num(sheet?.totalLiabilities) && num(sheet?.currentLiabilities) ? sheet!.totalLiabilities! - sheet!.currentLiabilities! : undefined,
-        cash: sheet?.cash ?? s?.totalCash, debt: sheet?.totalDebt ?? s?.totalDebt, equity: sheet?.equity,
-        debtToEquity: ratio(sheet?.totalDebt ?? s?.totalDebt, sheet?.equity),
+        cash, debt, equity: sheet?.equity,
+        debtToEquity: ratio(debt, sheet?.equity),
         debtToEquityEarliest: earliest && earliest !== sheet ? ratio(earliest.totalDebt, earliest.equity) : undefined,
         earliestYear: earliest?.end.slice(0, 4),
-        netCash: num(sheet?.cash) && num(sheet?.totalDebt) ? sheet!.cash! - sheet!.totalDebt! : undefined,
+        netCash: num(netDebt) ? -netDebt : undefined,
         interestCover: num(latest?.interestExpense) && latest.interestExpense > 0 ? ratio(latest.operatingIncome, latest.interestExpense) : undefined,
         cashFlowToDebt: num(latest?.totalDebt) && latest.totalDebt > 0 ? ratio(latest.operatingCashFlow, latest.totalDebt) : undefined,
         currentRatio: ratio(sheet?.currentAssets, sheet?.currentLiabilities),
-        history: [...annual].reverse().map((p) => ({ end: p.end, debt: p.totalDebt, equity: p.equity, cash: p.cash })),
+        series: periods.filter((p) => num(p.totalAssets) && p.kind !== 'ytd').map(pointOf).sort((a, b) => a.end.localeCompare(b.end)),
     };
 
-    // ---- Dividends
-    const dpsHistory = [...annual].reverse().flatMap((p) => {
-        const dps = p.dps ?? (num(p.dividendsPaid) && num(p.shares) && p.shares > 0 ? p.dividendsPaid / p.shares : undefined);
-        return num(dps) && dps > 0 ? [{ end: p.end, dps }] : [];
+    // ---- Dividends: every payment, totals by calendar year with the yield at that year's average price
+    const payments = s?.dividendPayments ?? [];
+    const prices = s?.priceHistory ?? [];
+    const thisYear = new Date().getFullYear();
+    const yearlyTotals = new Map<number, number>();
+    for (const p of payments) yearlyTotals.set(Number(p.date.slice(0, 4)), (yearlyTotals.get(Number(p.date.slice(0, 4))) ?? 0) + p.amount);
+    const annualDividends = [...yearlyTotals.entries()].sort((a, b) => a[0] - b[0]).map(([year, amount]) => {
+        const avgPrice = mean(prices.filter((p) => p.date.startsWith(String(year))).map((p) => p.close));
+        return { year, amount, yield: num(avgPrice) && avgPrice > 0 ? amount / avgPrice : undefined, partial: year === thisYear };
     });
+    const yearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const trailingDps = payments.filter((p) => p.date >= yearAgo).reduce((a, p) => a + p.amount, 0) || s?.trailingDividendRate;
+    const fullYears = annualDividends.filter((d) => !d.partial).slice(-6);
+    const buybackYield = num(latest?.buybacks) && num(marketCap) && marketCap > 0 ? latest.buybacks / marketCap : undefined;
+    const dividendYield = s?.dividendYield ?? (num(trailingDps) && num(price) && price > 0 ? trailingDps / price : undefined);
     const dividends: ValuationReport['dividends'] = {
-        yield: s?.dividendYield, rate: s?.dividendRate,
+        yield: dividendYield,
+        trailingDps,
+        forwardRate: s?.dividendRate,
+        forwardYield: num(s?.dividendRate) && num(price) && price > 0 ? s!.dividendRate! / price : undefined,
+        buybackYield,
+        shareholderYield: num(dividendYield) || num(buybackYield) ? (dividendYield ?? 0) + (buybackYield ?? 0) : undefined,
         payoutRatio: s?.payoutRatio ?? ratio(latest?.dps, latest?.eps),
         cashPayoutRatio: num(latest?.freeCashFlow) && latest.freeCashFlow > 0 ? ratio(latest.dividendsPaid, latest.freeCashFlow) : undefined,
         marketLow: benchmarks?.dividendYieldP25, marketHigh: benchmarks?.dividendYieldP75,
+        industryAverage: mean(peers.map((p) => p.dividendYield).filter((v) => num(v) && v! > 0)),
         exDate: s?.exDividendDate, payDate: s?.dividendDate,
-        growth: dpsHistory.length > 1 ? cagr(dpsHistory[dpsHistory.length - 1].dps, dpsHistory[0].dps, dpsHistory.length - 1) : undefined,
-        history: dpsHistory,
+        growth: fullYears.length > 1 ? cagr(fullYears[fullYears.length - 1].amount, fullYears[0].amount, fullYears.length - 1) : undefined,
+        payments,
+        annual: annualDividends,
     };
 
     // ---- People and ownership
@@ -341,6 +533,13 @@ export const buildReport = (data: CompanyFinancialsData, benchmarks: MarketBench
         holders: s?.holders ?? [],
         trades,
         netInsiderSelling: recentTrades.length ? sold > bought * 2 && sold > 0 : undefined,
+    };
+
+    // ---- Shares worth a look: peers on the lowest P/E, and the market's highest dividend payers
+    const discover = {
+        cheapPeers: [...peers].filter((p) => num(p.pe) && p.pe! > 0).sort((a, b) => a.pe! - b.pe!).slice(0, 3),
+        dividendPayers: (benchmarks?.topDividendPayers ?? []).filter((p) => p.symbol !== symbol).slice(0, 3),
+        medianPe: benchmarks?.medianPe,
     };
 
     // ---- Indicators (our own checklist; null means there isn't enough data to judge)
@@ -374,7 +573,7 @@ export const buildReport = (data: CompanyFinancialsData, benchmarks: MarketBench
             check('Current assets exceed current liabilities', num(health.currentRatio) ? health.currentRatio >= 1 : null, num(health.currentRatio) ? `Current ratio ${health.currentRatio.toFixed(2)}` : 'Not split on the balance sheet', LEARN.currentRatio),
         ],
         dividends: [
-            check('Pays a dividend', num(dividends.yield) ? dividends.yield > 0 : num(dividends.rate) ? dividends.rate > 0 : null, pct(dividends.yield, 2), LEARN.dividendYield),
+            check('Pays a dividend', num(dividends.yield) ? dividends.yield > 0 : num(dividends.trailingDps) ? dividends.trailingDps > 0 : null, pct(dividends.yield, 2), LEARN.dividendYield),
             check('Yield above the market’s lower quarter', gt(dividends.yield, dividends.marketLow), `${pct(dividends.yield, 2)} vs ${pct(dividends.marketLow, 2)}`, LEARN.dividendYield),
             check('Dividend covered by earnings (payout under 75%)', num(dividends.payoutRatio) && dividends.payoutRatio > 0 ? dividends.payoutRatio < 0.75 : null, pct(dividends.payoutRatio), LEARN.payout),
             check('Dividend per share has grown', num(dividends.growth) ? dividends.growth > 0 : null, num(dividends.growth) ? `${pct(dividends.growth)} a year` : 'Not enough history', LEARN.dividendYield),
@@ -393,18 +592,24 @@ export const buildReport = (data: CompanyFinancialsData, benchmarks: MarketBench
     // Every source used, for the data panel
     const sources = new Map<string, DataSource>();
     for (const p of periods) for (const src of p.sources) sources.set(`${src.label}|${src.url ?? ''}`, src);
-    if (s) sources.set('yahoo-summary', { kind: 'yahoo', label: 'Yahoo Finance quote, profile, analysts and ownership', url: `https://finance.yahoo.com/quote/${encodeURIComponent(s.yahooSymbol)}` });
+    if (s) sources.set('yahoo-summary', { kind: 'yahoo', label: 'Yahoo Finance quote, profile, analysts, ownership and dividends', url: `https://finance.yahoo.com/quote/${encodeURIComponent(s.yahooSymbol)}` });
     if (benchmarks) sources.set('bond', { kind: 'yahoo', label: benchmarks.riskFreeSource.label, url: benchmarks.riskFreeSource.url });
 
     return {
         market, symbol, company: data.company || s?.name || symbol,
         currency: s?.currency ?? (market === 'local' ? 'ZAR' : 'USD'),
+        sourcePreference,
         phase: data.phase, message: data.message, websiteNote: data.websiteNote,
         collectedAt: data.collectedAt ? new Date(data.collectedAt).toISOString() : undefined,
         documents: data.documents ?? [],
         sources: [...sources.values()],
         snapshot: s, benchmarks, price,
-        ratios: { pe, pb, evEbitda, dividendYield: s?.dividendYield, marketCap: s?.marketCap },
-        fairValue, analysts, relative, growth, performance, health, dividends, people, indicators, highlights,
+        ratios: { pe, pb, evEbitda, dividendYield: s?.dividendYield, marketCap },
+        perShare: { epsDiluted: latest?.eps ?? s?.trailingEps, epsBasic: latest?.epsBasic, bookValue: bookPerShare, dps: trailingDps, roe: performance.roe },
+        enterprise: {
+            marketEv: num(marketCap) ? marketCap + (netDebt ?? 0) : s?.enterpriseValue,
+            marketCap, debt, cash, netDebt, wacc, costOfDebt, taxRate,
+        },
+        fairValue, cashFlows, analysts, relative, growth, performance, health, dividends, people, discover, indicators, highlights,
     };
 };

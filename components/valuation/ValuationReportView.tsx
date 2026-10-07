@@ -1,13 +1,16 @@
 import {ExternalLink} from "lucide-react";
 import Section, {LearnLink, Stat} from "@/components/valuation/Section";
 import StatementsPanel from "@/components/valuation/StatementsPanel";
-import {CompareBars, FairValueTrack, SplitBar, TrendLines} from "@/components/valuation/charts";
+import SuggestionCards from "@/components/valuation/SuggestionCards";
+import {ColumnCompare, CompareBars, FairValueTrack, PeriodColumns, PriceTargetChart, SplitBar, TrendLines} from "@/components/valuation/charts";
+import {DividendHistoryChart, HealthExplorer, RevenueFlowExplorer} from "@/components/valuation/Interactive";
 import {count, date, isNum, money, pct, signedPct, times} from "@/components/valuation/format";
 import {LEARN, type ValuationReport} from "@/lib/valuation/model";
 
 const CONTENTS = [
-    ['summary', 'Summary'], ['fair-value', 'Fair value'], ['peers', 'Peers'], ['growth', 'Growth'], ['performance', 'Performance'],
-    ['balance-sheet', 'Balance sheet'], ['dividends', 'Dividends'], ['people', 'People & ownership'], ['company', 'Company'], ['sources', 'Sources'],
+    ['summary', 'Summary'], ['fair-value', 'Fair value'], ['cash-flows', 'Cash flows'], ['analysts', 'Analysts'], ['peers', 'Peers'],
+    ['growth', 'Growth'], ['performance', 'Performance'], ['balance-sheet', 'Balance sheet'], ['dividends', 'Dividends'],
+    ['people', 'People & ownership'], ['company', 'Company'], ['sources', 'Sources'],
 ] as const;
 
 const verdict = (difference?: number) => {
@@ -18,10 +21,13 @@ const verdict = (difference?: number) => {
 };
 
 const ValuationReportView = ({ report }: { report: ValuationReport }) => {
-    const { snapshot: s, currency, fairValue, relative, analysts, growth, performance, health, dividends, people, indicators } = report;
+    const { snapshot: s, currency, fairValue, relative, analysts, growth, performance, health, dividends, people, indicators, enterprise, perShare, discover } = report;
+    const reporting = s?.financialCurrency ?? currency;
     const m = (v?: number | null) => money(v, currency);
+    const r = (v?: number | null) => money(v, reporting);
     const p = (v?: number | null) => money(v, currency, false);
     const call = verdict(fairValue.difference);
+    const headline = fairValue.models[0];
 
     return (
         <div className="flex flex-col gap-12">
@@ -34,13 +40,15 @@ const ValuationReportView = ({ report }: { report: ValuationReport }) => {
                     </div>
                     <span className={`rounded-full border px-4 py-1.5 text-sm font-medium ${call.tone}`}>{call.text}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-6">
+                <div className="grid grid-cols-2 gap-5 sm:grid-cols-4 lg:grid-cols-8">
                     <Stat label="Share price" value={p(report.price)} sub={isNum(s?.change52w) ? `${signedPct(s?.change52w)} over a year` : undefined} />
-                    <Stat label="Fair value estimate" value={p(fairValue.value)} sub={fairValue.method === 'residual-income' ? 'Residual income model' : fairValue.method === 'cash-flow' ? 'Cash-flow model' : undefined} />
-                    <Stat label="Market value" value={m(report.ratios.marketCap)} />
+                    <Stat label="Fair value estimate" value={p(fairValue.value)} sub={headline?.label} />
+                    <Stat label="Market value" value={m(enterprise.marketCap)} />
+                    <Stat label="Enterprise value" value={m(enterprise.marketEv)} learn={LEARN.enterpriseValue} />
                     <Stat label={relative.metric} value={times(relative.company)} learn={relative.metric === 'P/E' ? LEARN.pe : LEARN.pb} />
-                    <Stat label="EV / EBITDA" value={times(report.ratios.evEbitda)} learn={LEARN.evEbitda} />
-                    <Stat label="Dividend yield" value={pct(report.ratios.dividendYield, 2)} learn={LEARN.dividendYield} />
+                    <Stat label="Diluted / basic EPS" value={`${p(perShare.epsDiluted)} / ${p(perShare.epsBasic)}`} learn={LEARN.eps} />
+                    <Stat label="Return on equity" value={pct(perShare.roe)} learn={LEARN.roe} />
+                    <Stat label="Dividend yield" value={pct(dividends.yield, 2)} learn={LEARN.dividendYield} />
                 </div>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
@@ -60,21 +68,56 @@ const ValuationReportView = ({ report }: { report: ValuationReport }) => {
 
             {/* Contents */}
             <nav aria-label="Valuation sections" className="sticky top-20 z-10 -mx-1 flex gap-1 overflow-x-auto rounded-lg bg-gray-900/90 px-1 py-2 backdrop-blur scrollbar-hide-default">
-                {CONTENTS.map(([id, label]) => (
-                    <a key={id} href={`#${id}`} className="pill-tab shrink-0">{label}</a>
-                ))}
+                {CONTENTS.map(([id, label]) => <a key={id} href={`#${id}`} className="pill-tab shrink-0">{label}</a>)}
             </nav>
 
             <Section id="fair-value" title="Fair Value"
                 intro={fairValue.method === 'residual-income'
                     ? 'Banks and insurers are valued on their book value plus the returns they earn above what shareholders require (a residual income model).'
-                    : 'The company’s cash flows over the next ten years, discounted back to today at the return shareholders require (a discounted cash flow model).'}
+                    : 'Future free cash flows discounted back to today: cash flow to the firm at the weighted cost of capital gives enterprise value, and cash flow to equity at the cost of equity gives equity value directly.'}
                 indicators={indicators.value}>
                 <div className="dash-panel">
-                    {isNum(fairValue.value) ? (
-                        <FairValueTrack price={report.price} fairValue={fairValue.value} format={p} />
-                    ) : <p className="text-sm text-gray-400">{fairValue.reason}</p>}
+                    {isNum(fairValue.value) ? <FairValueTrack price={report.price} fairValue={fairValue.value} format={p} /> : <p className="text-sm text-gray-400">{fairValue.reason}</p>}
                 </div>
+
+                <div className="dash-panel overflow-x-auto">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="font-semibold text-gray-100">Enterprise value and terminal value</h3>
+                        <span className="flex gap-3"><LearnLink href={LEARN.enterpriseValue}>Enterprise value</LearnLink><LearnLink href={LEARN.terminalValue}>Terminal value</LearnLink></span>
+                    </div>
+                    <table className="w-full min-w-[720px] text-sm">
+                        <thead>
+                            <tr className="text-left text-xs text-gray-500">
+                                <th className="pb-2">Model</th><th className="pb-2 text-right">Per share</th><th className="pb-2 text-right">Enterprise value</th>
+                                <th className="pb-2 text-right">Equity value</th><th className="pb-2 text-right">Terminal value (in year 10)</th>
+                                <th className="pb-2 text-right">Terminal value (today)</th><th className="pb-2 text-right">Share of value from terminal</th><th className="pb-2 text-right">Discount rate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {fairValue.models.map((model, i) => (
+                                <tr key={model.key} className="border-t border-gray-800">
+                                    <td className="py-2 text-gray-100">{model.label}{i === 0 && <span className="ml-2 rounded bg-[#5862FF]/20 px-1.5 text-[10px] text-[#5862FF]">headline</span>}
+                                        {model.note && <span className="block text-xs text-gray-500">{model.note}</span>}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-100">{p(model.perShare)}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-100">{r(model.enterpriseValue)}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-100">{r(model.equityValue)}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-100">{r(model.terminalValue)}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-100">{r(model.terminalValuePv)}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-100">{isNum(model.terminalValuePv) && isNum(model.equityValue) && isNum(model.enterpriseValue ?? model.equityValue) ? pct(model.terminalValuePv / (model.key === 'fcff' ? model.enterpriseValue! : model.equityValue)) : '—'}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-100">{pct(model.discountRate)}</td>
+                                </tr>
+                            ))}
+                            <tr className="border-t border-gray-600">
+                                <td className="py-2 text-gray-400">Market today (market value + debt − cash)</td>
+                                <td className="py-2 text-right tabular-nums text-gray-100">{p(report.price)}</td>
+                                <td className="py-2 text-right tabular-nums text-gray-100">{r(enterprise.marketEv)}</td>
+                                <td className="py-2 text-right tabular-nums text-gray-100">{r(enterprise.marketCap)}</td>
+                                <td colSpan={4} className="py-2 text-right text-xs text-gray-500">Debt {r(enterprise.debt)} · Cash {r(enterprise.cash)} · Net debt {r(enterprise.netDebt)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
                 {fairValue.inputs.length > 0 && (
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                         <div className="dash-panel">
@@ -82,33 +125,69 @@ const ValuationReportView = ({ report }: { report: ValuationReport }) => {
                             <dl className="flex flex-col gap-2 text-sm">
                                 {fairValue.inputs.map((i) => (
                                     <div key={i.label} className="flex items-center justify-between gap-4 border-b border-gray-800 pb-2">
-                                        <dt className="text-gray-400">{i.label} {i.learn && <LearnLink href={i.learn}>source</LearnLink>}</dt>
+                                        <dt className="text-gray-400">{i.label} {i.learn && <LearnLink href={i.learn}>more</LearnLink>}</dt>
                                         <dd className="tabular-nums text-gray-100">{i.value}</dd>
                                     </div>
                                 ))}
                             </dl>
-                            <LearnLink href={fairValue.method === 'residual-income' ? LEARN.residualIncome : LEARN.dcf}>How this model works</LearnLink>
                         </div>
                         {fairValue.projections.length > 0 && (
                             <div className="dash-panel">
-                                <h3 className="mb-3 font-semibold text-gray-100">Projected cash flows</h3>
+                                <h3 className="mb-3 font-semibold text-gray-100">Projected cash flows ({headline?.key === 'fcfe' ? 'to equity' : 'to the firm'})</h3>
                                 <table className="w-full text-sm">
                                     <thead><tr className="text-left text-xs text-gray-500"><th className="pb-2">Year</th><th className="pb-2 text-right">Cash flow</th><th className="pb-2 text-right">Value today</th></tr></thead>
                                     <tbody>
                                         {fairValue.projections.map((row) => (
-                                            <tr key={row.year} className="border-t border-gray-800"><td className="py-1.5 text-gray-400">{row.year}</td><td className="py-1.5 text-right tabular-nums text-gray-100">{m(row.cashFlow)}</td><td className="py-1.5 text-right tabular-nums text-gray-100">{m(row.presentValue)}</td></tr>
+                                            <tr key={row.year} className="border-t border-gray-800"><td className="py-1.5 text-gray-400">{row.year}</td><td className="py-1.5 text-right tabular-nums text-gray-100">{r(row.cashFlow)}</td><td className="py-1.5 text-right tabular-nums text-gray-100">{r(row.presentValue)}</td></tr>
                                         ))}
-                                        <tr className="border-t border-gray-600"><td className="py-1.5 text-gray-400">After year 10</td><td /><td className="py-1.5 text-right tabular-nums text-gray-100">{m(fairValue.presentValueOfTerminal)}</td></tr>
+                                        <tr className="border-t border-gray-600"><td className="py-1.5 text-gray-400">Terminal value</td><td className="py-1.5 text-right tabular-nums text-gray-100">{r(headline?.terminalValue)}</td><td className="py-1.5 text-right tabular-nums text-gray-100">{r(headline?.terminalValuePv)}</td></tr>
                                     </tbody>
                                 </table>
                             </div>
                         )}
                     </div>
                 )}
-                <div className="dash-panel grid grid-cols-2 gap-5 sm:grid-cols-4">
-                    <Stat label="Analysts’ average target" value={p(analysts.mean)} sub={isNum(analysts.upside) ? `${signedPct(analysts.upside)} from today` : undefined} learn={LEARN.priceTarget} />
+                <SuggestionCards title="Cheapest peers on earnings" note="Same-sector shares with the lowest P/E. Open one to value it the same way."
+                    shares={discover.cheapPeers} market={report.market} currency={currency} medianPe={discover.medianPe} />
+            </Section>
+
+            <Section id="cash-flows" title="Cash Flows to the Firm and to Equity"
+                intro="Free cash flow to the firm is cash from operations plus after-tax interest, less investment: what all lenders and shareholders could take out. Free cash flow to equity also counts new borrowing and repayments: what is left for shareholders.">
+                <div className="dash-panel">
+                    <PeriodColumns format={r}
+                        periods={[...report.cashFlows].reverse().map((c) => ({ label: c.label, values: { fcff: c.fcff, fcfe: c.fcfe, fcf: c.fcf } }))}
+                        series={[{ key: 'fcff', label: 'Free cash flow to the firm' }, { key: 'fcfe', label: 'Free cash flow to equity' }, { key: 'fcf', label: 'Free cash flow' }]} />
+                </div>
+                <div className="dash-panel overflow-x-auto">
+                    <table className="w-full min-w-[640px] text-sm">
+                        <thead><tr className="text-left text-xs text-gray-500"><th className="pb-2">Year</th><th className="pb-2 text-right">Operating cash flow</th><th className="pb-2 text-right">Investment</th><th className="pb-2 text-right">Net borrowing</th><th className="pb-2 text-right">Tax rate</th><th className="pb-2 text-right">FCFF</th><th className="pb-2 text-right">FCFE</th></tr></thead>
+                        <tbody>
+                            {report.cashFlows.map((c) => (
+                                <tr key={c.end} className="border-t border-gray-800">
+                                    <td className="py-2 text-gray-400">{c.label}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-100">{r(c.operatingCashFlow)}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-100">{r(c.capex)}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-100">{r(c.netBorrowing)}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-100">{pct(c.taxRate)}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-100">{r(c.fcff)}</td>
+                                    <td className="py-2 text-right tabular-nums text-gray-100">{r(c.fcfe)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    <div className="mt-2 flex gap-4"><LearnLink href={LEARN.fcff}>Free cash flow to the firm</LearnLink><LearnLink href={LEARN.fcfe}>Free cash flow to equity</LearnLink></div>
+                </div>
+            </Section>
+
+            <Section id="analysts" title="Analyst Price Targets" intro="The share price over two years, then the range analysts expect over the next twelve months.">
+                <div className="dash-panel">
+                    <PriceTargetChart history={analysts.priceHistory} mean={analysts.mean} high={analysts.high} low={analysts.low} format={p} />
+                </div>
+                <div className="dash-panel grid grid-cols-2 gap-5 sm:grid-cols-5">
+                    <Stat label="Average target" value={p(analysts.mean)} sub={isNum(analysts.upside) ? `${signedPct(analysts.upside)} from today` : undefined} learn={LEARN.priceTarget} />
                     <Stat label="Highest target" value={p(analysts.high)} />
                     <Stat label="Lowest target" value={p(analysts.low)} />
+                    <Stat label="Spread around average" value={isNum(analysts.high) && isNum(analysts.low) && isNum(analysts.mean) ? pct((analysts.high - analysts.low) / 2 / analysts.mean) : '—'} />
                     <Stat label="Analysts" value={count(analysts.count)} sub={analysts.recommendation?.replace(/_/g, ' ')} />
                 </div>
             </Section>
@@ -143,14 +222,14 @@ const ValuationReportView = ({ report }: { report: ValuationReport }) => {
                 )}
             </Section>
 
-            <Section id="growth" title="Growth Outlook" intro="Analysts’ forecasts for the next financial year, against the market average and the 10-year government bond yield." indicators={indicators.growth}>
+            <Section id="growth" title="Growth Outlook" intro="Analysts’ forecasts for the next financial year, against the market median and the 10-year government bond yield." indicators={indicators.growth}>
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <div className="dash-panel">
                         <h3 className="mb-3 font-semibold text-gray-100">Earnings growth forecast</h3>
                         <CompareBars format={(v) => signedPct(v)} rows={[
                             { label: report.symbol, value: growth.earningsNextYear, highlight: true },
                             { label: 'Peer average', value: growth.peersEarnings },
-                            { label: 'Market average', value: growth.marketEarnings },
+                            { label: 'Market median', value: growth.marketEarnings },
                             { label: '10-year bond yield', value: growth.bondYield },
                         ]} />
                     </div>
@@ -158,79 +237,90 @@ const ValuationReportView = ({ report }: { report: ValuationReport }) => {
                         <h3 className="mb-3 font-semibold text-gray-100">Revenue growth forecast</h3>
                         <CompareBars format={(v) => signedPct(v)} rows={[
                             { label: report.symbol, value: growth.revenueNextYear, highlight: true },
-                            { label: 'Market average', value: growth.marketRevenue },
+                            { label: 'Market median', value: growth.marketRevenue },
                         ]} />
                     </div>
                 </div>
                 <div className="dash-panel grid grid-cols-2 gap-5 sm:grid-cols-4">
                     <Stat label="Earnings growth this year" value={signedPct(growth.earningsThisYear)} />
                     <Stat label="Revenue growth this year" value={signedPct(growth.revenueThisYear)} />
-                    <Stat label="Forecast EPS next year" value={p(growth.epsNextYear)} />
+                    <Stat label="Forecast EPS next year" value={p(growth.epsNextYear)} learn={LEARN.eps} />
                     <Stat label="Return on equity now" value={pct(performance.roe)} learn={LEARN.roe} />
                 </div>
             </Section>
 
             <Section id="performance" title="Past Performance" intro="What the company has reported, from its own results, SEC filings or Yahoo Finance." indicators={indicators.performance}>
-                <div className="dash-panel grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-6">
+                <div className="dash-panel grid grid-cols-2 gap-5 sm:grid-cols-4 lg:grid-cols-8">
                     <Stat label="Revenue growth (1 year)" value={signedPct(performance.revenueGrowth1y)} />
-                    <Stat label={`Revenue growth (${performance.cagrYears ?? '—'}-year a year)`} value={signedPct(performance.revenueCagr)} learn={LEARN.cagr} />
+                    <Stat label={`Revenue growth (${performance.cagrYears ?? '—'}y a year)`} value={signedPct(performance.revenueCagr)} learn={LEARN.cagr} />
                     <Stat label="Earnings growth (1 year)" value={signedPct(performance.earningsGrowth1y)} />
-                    <Stat label={`Earnings growth (${performance.cagrYears ?? '—'}-year a year)`} value={signedPct(performance.earningsCagr)} />
+                    <Stat label={`Earnings growth (${performance.cagrYears ?? '—'}y a year)`} value={signedPct(performance.earningsCagr)} />
                     <Stat label="Net margin" value={pct(performance.netMargin)} sub={`Prior year ${pct(performance.netMarginPrior)}`} learn={LEARN.netMargin} />
+                    <Stat label="Return on equity" value={pct(performance.roe)} learn={LEARN.roe} />
                     <Stat label="Return on assets" value={pct(performance.roa)} learn={LEARN.roa} />
+                    <Stat label="Basic EPS" value={p(perShare.epsBasic)} learn={LEARN.eps} />
                 </div>
-                <StatementsPanel annual={performance.annual} toDate={performance.toDate} recent={performance.recent} recentLabel={performance.recentLabel} currency={s?.financialCurrency ?? currency} />
+                <div>
+                    <h3 className="mb-3 font-semibold text-gray-100">Revenue breakdown</h3>
+                    <RevenueFlowExplorer flows={performance.flows} currency={reporting} />
+                </div>
+                <div className="dash-panel">
+                    <h3 className="mb-3 font-semibold text-gray-100">Return on equity by year</h3>
+                    <TrendLines format={(v) => pct(v)} points={[...performance.annual].reverse().map((row) => ({ label: row.label.replace('FY ', ''), values: { roe: row.roe } }))} series={[{ key: 'roe', label: 'Return on equity' }]} />
+                </div>
+                <StatementsPanel annual={performance.annual} toDate={performance.toDate} recent={performance.recent} recentLabel={performance.recentLabel} currency={reporting} />
             </Section>
 
-            <Section id="balance-sheet" title="Balance Sheet Strength" intro={health.asOf ? `As at ${date(health.asOf)}.` : undefined} indicators={indicators.health}>
-                <div className="dash-panel grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-6">
-                    <Stat label="Debt to equity" value={pct(health.debtToEquity)} learn={LEARN.debtEquity} />
-                    <Stat label="Net cash" value={m(health.netCash)} sub={isNum(health.netCash) && health.netCash < 0 ? 'Net debt' : undefined} />
-                    <Stat label="Interest cover" value={times(health.interestCover)} learn={LEARN.interestCover} />
-                    <Stat label="Current ratio" value={isNum(health.currentRatio) ? health.currentRatio.toFixed(2) : '—'} learn={LEARN.currentRatio} />
-                    <Stat label="Total assets" value={m(health.totalAssets)} />
-                    <Stat label="Total liabilities" value={m(health.totalLiabilities)} />
-                </div>
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <div className="dash-panel">
-                        <h3 className="mb-3 font-semibold text-gray-100">What it owns and owes</h3>
-                        <CompareBars format={m} rows={[
-                            { label: 'Current assets', value: health.currentAssets },
-                            { label: 'Current liabilities', value: health.currentLiabilities },
-                            { label: 'Non-current liabilities', value: health.nonCurrentLiabilities },
-                            { label: 'Cash', value: health.cash, highlight: true },
-                            { label: 'Debt', value: health.debt },
-                            { label: 'Equity', value: health.equity },
-                        ]} />
-                    </div>
-                    <div className="dash-panel">
-                        <h3 className="mb-3 font-semibold text-gray-100">Debt, equity and cash over time</h3>
-                        <TrendLines format={m} points={health.history.map((h) => ({ label: h.end.slice(0, 4), values: { debt: h.debt, equity: h.equity, cash: h.cash } }))}
-                            series={[{ key: 'equity', label: 'Equity' }, { key: 'cash', label: 'Cash' }, { key: 'debt', label: 'Debt' }]} />
-                    </div>
-                </div>
+            <Section id="balance-sheet" title="Balance Sheet Strength"
+                intro="Step through each reported year (or half year) to see what the company owned and owed, and how its debt compared with its equity and cash."
+                indicators={indicators.health}>
+                <HealthExplorer series={health.series} currency={reporting} />
             </Section>
 
-            <Section id="dividends" title="Dividends" intro={dividends.exDate || dividends.payDate ? `Next dividend: goes ex on ${date(dividends.exDate)}, paid ${date(dividends.payDate)}.` : undefined} indicators={indicators.dividends}>
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Section id="dividends" title="Dividends" indicators={indicators.dividends}>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,22rem)_1fr]">
                     <div className="dash-panel">
-                        <h3 className="mb-3 font-semibold text-gray-100">Yield against the market</h3>
-                        <CompareBars format={(v) => pct(v, 2)} rows={[
-                            { label: report.symbol, value: dividends.yield, highlight: true },
-                            { label: 'Market lower quarter', value: dividends.marketLow },
-                            { label: 'Market upper quarter', value: dividends.marketHigh },
-                        ]} />
-                        <div className="mt-4 grid grid-cols-3 gap-4">
-                            <Stat label="Payout (of earnings)" value={pct(dividends.payoutRatio)} learn={LEARN.payout} />
-                            <Stat label="Payout (of free cash flow)" value={pct(dividends.cashPayoutRatio)} />
-                            <Stat label="Dividend growth a year" value={signedPct(dividends.growth)} />
+                        <h3 className="mb-4 font-semibold text-gray-100">Key information</h3>
+                        <div className="mb-4 grid grid-cols-2 gap-4">
+                            <div className="border-l-4 border-[#5862FF] pl-3"><p className="text-xl font-semibold text-gray-100">{pct(dividends.yield, 2)}</p><p className="text-xs text-gray-500">Dividend yield</p></div>
+                            <div className="border-l-4 border-[#5862FF] pl-3"><p className="text-xl font-semibold text-gray-100">{pct(dividends.buybackYield, 2)}</p><p className="text-xs text-gray-500">Buyback yield</p></div>
                         </div>
+                        <dl className="flex flex-col text-sm">
+                            {[
+                                ['Total shareholder yield', pct(dividends.shareholderYield, 2), LEARN.shareholderYield],
+                                ['Forward dividend yield', pct(dividends.forwardYield, 2), LEARN.dividendYield],
+                                ['Dividend growth (a year)', signedPct(dividends.growth), undefined],
+                                ['Next payment date', date(dividends.payDate), undefined],
+                                ['Ex-dividend date', date(dividends.exDate), undefined],
+                                ['Dividends per share (last 12 months)', p(dividends.trailingDps), undefined],
+                                ['Indicated annual dividend', p(dividends.forwardRate), undefined],
+                                ['Payout ratio (of earnings)', pct(dividends.payoutRatio), LEARN.payout],
+                                ['Payout ratio (of free cash flow)', pct(dividends.cashPayoutRatio), LEARN.payout],
+                            ].map(([label, value, learn]) => (
+                                <div key={label} className="flex items-center justify-between gap-3 border-t border-gray-800 py-2">
+                                    <dt className="text-gray-400">{label} {learn && <LearnLink href={learn}>?</LearnLink>}</dt>
+                                    <dd className="tabular-nums text-gray-100">{value}</dd>
+                                </div>
+                            ))}
+                        </dl>
                     </div>
                     <div className="dash-panel">
-                        <h3 className="mb-3 font-semibold text-gray-100">Dividend per share</h3>
-                        <TrendLines format={p} points={dividends.history.map((d) => ({ label: d.end.slice(0, 4), values: { dps: d.dps } }))} series={[{ key: 'dps', label: 'Dividend per share' }]} />
+                        <h3 className="mb-3 font-semibold text-gray-100">Payment history</h3>
+                        <DividendHistoryChart annual={dividends.annual} payments={dividends.payments} forwardRate={dividends.forwardRate} forwardYield={dividends.forwardYield} currency={currency} />
                     </div>
                 </div>
+                <div className="dash-panel">
+                    <h3 className="mb-4 font-semibold text-gray-100">Yield against the market and industry</h3>
+                    <ColumnCompare format={(v) => pct(v, 1)} columns={[
+                        { label: report.symbol, value: dividends.yield, highlight: true },
+                        { label: 'Market lower quarter', value: dividends.marketLow },
+                        { label: 'Market upper quarter', value: dividends.marketHigh },
+                        { label: 'Peer average', value: dividends.industryAverage },
+                        { label: 'Forward (indicated)', value: dividends.forwardYield },
+                    ]} />
+                </div>
+                <SuggestionCards title="Highest dividend payers in the market" note={`Highest trailing yields among the ${report.market === 'local' ? 'JSE shares GMIT tracks' : 'large US shares GMIT tracks'}, recalculated daily.`}
+                    shares={discover.dividendPayers} market={report.market} currency={currency} medianPe={discover.medianPe} />
             </Section>
 
             <Section id="people" title="People & Ownership">
@@ -249,7 +339,7 @@ const ValuationReportView = ({ report }: { report: ValuationReport }) => {
                             <table className="w-full text-sm">
                                 <thead><tr className="text-left text-xs text-gray-500"><th className="pb-2">Name</th><th className="pb-2">Role</th><th className="pb-2 text-right">Pay</th></tr></thead>
                                 <tbody>{people.officers.map((o) => (
-                                    <tr key={`${o.name}${o.title}`} className="border-t border-gray-800"><td className="py-2 text-gray-100">{o.name}{isNum(o.age) && <span className="text-xs text-gray-500"> · {o.age}</span>}</td><td className="py-2 text-gray-400">{o.title}</td><td className="py-2 text-right tabular-nums text-gray-100">{isNum(o.pay) ? money(o.pay, s?.financialCurrency ?? currency) : '—'}</td></tr>
+                                    <tr key={`${o.name}${o.title}`} className="border-t border-gray-800"><td className="py-2 text-gray-100">{o.name}{isNum(o.age) && <span className="text-xs text-gray-500"> · {o.age}</span>}</td><td className="py-2 text-gray-400">{o.title}</td><td className="py-2 text-right tabular-nums text-gray-100">{isNum(o.pay) ? r(o.pay) : '—'}</td></tr>
                                 ))}</tbody>
                             </table>
                         ) : <p className="text-sm text-gray-500">No leadership data.</p>}
@@ -275,7 +365,7 @@ const ValuationReportView = ({ report }: { report: ValuationReport }) => {
                         <table className="w-full min-w-[560px] text-sm">
                             <thead><tr className="text-left text-xs text-gray-500"><th className="pb-2">Date</th><th className="pb-2">Insider</th><th className="pb-2">Trade</th><th className="pb-2 text-right">Shares</th><th className="pb-2 text-right">Value</th></tr></thead>
                             <tbody>{people.trades.map((t, i) => (
-                                <tr key={i} className="border-t border-gray-800"><td className="py-2 text-gray-400">{date(t.date)}</td><td className="py-2 text-gray-100">{t.name}<span className="block text-xs text-gray-500">{t.relation}</span></td><td className="py-2 text-gray-400">{t.text ?? '—'}</td><td className="py-2 text-right tabular-nums text-gray-100">{count(t.shares)}</td><td className="py-2 text-right tabular-nums text-gray-100">{isNum(t.value) ? money(t.value, currency) : '—'}</td></tr>
+                                <tr key={i} className="border-t border-gray-800"><td className="py-2 text-gray-400">{date(t.date)}</td><td className="py-2 text-gray-100">{t.name}<span className="block text-xs text-gray-500">{t.relation}</span></td><td className="py-2 text-gray-400">{t.text ?? '—'}</td><td className="py-2 text-right tabular-nums text-gray-100">{count(t.shares)}</td><td className="py-2 text-right tabular-nums text-gray-100">{isNum(t.value) ? m(t.value) : '—'}</td></tr>
                             ))}</tbody>
                         </table>
                     </div>
@@ -300,7 +390,7 @@ const ValuationReportView = ({ report }: { report: ValuationReport }) => {
             </Section>
 
             <Section id="sources" title="Sources & Data Status"
-                intro={`Last collected ${report.collectedAt ? date(report.collectedAt) : 'just now'}. Prices are live; the market comparison figures are recalculated daily.`}>
+                intro={`Figures last collected ${report.collectedAt ? date(report.collectedAt) : 'just now'}. Prices are live; market comparison figures are recalculated daily or when you refresh market data.`}>
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <div className="dash-panel">
                         <h3 className="mb-3 font-semibold text-gray-100">Company documents read</h3>
@@ -309,7 +399,7 @@ const ValuationReportView = ({ report }: { report: ValuationReport }) => {
                                 {report.documents.map((d) => (
                                     <li key={d.url} className="flex items-start justify-between gap-3">
                                         <a href={d.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-w-0 items-center gap-1 text-gray-100 hover:text-blue-700">
-                                            <span className="truncate capitalize">{d.title}</span> <ExternalLink className="h-3 w-3 shrink-0" />
+                                            <span className="truncate capitalize">{d.title}</span> <span className="text-xs text-gray-500">({d.type === 'interim' ? 'half year' : 'full year'})</span> <ExternalLink className="h-3 w-3 shrink-0" />
                                         </a>
                                         <span className={`shrink-0 text-xs ${d.status === 'read' ? 'text-teal-400' : d.status === 'failed' ? 'text-red-500' : 'text-gray-500'}`}>
                                             {d.status === 'read' ? d.note ?? 'Read' : d.status === 'failed' ? d.note ?? 'Could not be read' : 'Waiting'}

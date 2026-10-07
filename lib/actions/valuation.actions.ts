@@ -7,9 +7,9 @@ import { getSessionUser } from '@/lib/better-auth/session';
 import { getYahooQuote } from '@/lib/actions/yahoo.actions';
 import { inngest } from '@/lib/inngest/client';
 import { canAccessMarket, isMarketKey, type MarketKey } from '@/lib/markets';
-import { advanceCollection, collectionKey, startCollection, yahooSymbolFor, type CollectionState } from '@/lib/valuation/collect';
+import { advanceCollection, collectionKey, refreshMarketSnapshot, startCollection, yahooSymbolFor, type CollectionState } from '@/lib/valuation/collect';
 import { readBenchmarks } from '@/lib/valuation/benchmarks';
-import { buildReport, type ValuationReport } from '@/lib/valuation/model';
+import { buildReport, type SourcePreference, type ValuationReport } from '@/lib/valuation/model';
 
 const SYMBOL = /^[A-Z0-9.\-^=]{1,20}$/;
 
@@ -22,7 +22,7 @@ const authorise = async (market: MarketKey, symbol: string) => {
 };
 
 // The stored valuation for a share (null until someone loads it), valued at the latest price
-export async function getValuation(market: MarketKey, symbol: string): Promise<{ report: ValuationReport | null; error?: string }> {
+export async function getValuation(market: MarketKey, symbol: string, source: SourcePreference = 'auto'): Promise<{ report: ValuationReport | null; error?: string }> {
     try {
         const auth = await authorise(market, symbol);
         if ('error' in auth) return { report: null, error: auth.error };
@@ -37,7 +37,8 @@ export async function getValuation(market: MarketKey, symbol: string): Promise<{
         ]);
         // Round-trip through JSON so only plain data reaches the page
         const data = JSON.parse(JSON.stringify(doc)) as CompanyFinancialsData;
-        return { report: buildReport(data, benchmarks, quote?.price) };
+        const preference: SourcePreference = ['company', 'sec', 'yahoo'].includes(source) ? source : 'auto';
+        return { report: buildReport(data, benchmarks, quote?.price, preference) };
     } catch (e) {
         unstable_rethrow(e);
         console.error('getValuation error:', e);
@@ -71,5 +72,19 @@ export async function advanceValuation(market: MarketKey, symbol: string): Promi
         unstable_rethrow(e);
         console.error('advanceValuation error:', e);
         return { error: 'Collection stalled' };
+    }
+}
+
+// Fetches the latest price, dividends, analyst targets, ownership, peers and market figures for a share
+export async function refreshMarketData(market: MarketKey, symbol: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const auth = await authorise(market, symbol);
+        if ('error' in auth) return { success: false, error: auth.error };
+        const ok = await refreshMarketSnapshot(market, symbol);
+        return ok ? { success: true } : { success: false, error: 'Market data is unavailable right now' };
+    } catch (e) {
+        unstable_rethrow(e);
+        console.error('refreshMarketData error:', e);
+        return { success: false, error: 'Market data could not be refreshed' };
     }
 }

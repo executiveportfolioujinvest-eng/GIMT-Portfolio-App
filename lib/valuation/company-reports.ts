@@ -149,7 +149,7 @@ export const discoverReports = async (website: string): Promise<{ documents: Rep
 };
 
 const NUMBER = { type: 'NUMBER', nullable: true };
-const OUTFLOW_FIELDS = new Set<string>(['capex', 'interestExpense', 'dividendsPaid']);
+const OUTFLOW_FIELDS = new Set<string>(['capex', 'interestExpense', 'dividendsPaid', 'buybacks', 'incomeTax']);
 const RESPONSE_SCHEMA = {
     type: 'OBJECT',
     properties: {
@@ -167,6 +167,15 @@ const RESPONSE_SCHEMA = {
                     ...Object.fromEntries(PERIOD_FIELDS.filter((f) => f !== 'freeCashFlow').map((f) => [f, NUMBER])),
                 },
                 required: ['periodEnd', 'months'],
+            },
+        },
+        segments: {
+            type: 'ARRAY',
+            nullable: true,
+            items: {
+                type: 'OBJECT',
+                properties: { name: { type: 'STRING' }, revenue: { type: 'NUMBER' } },
+                required: ['name', 'revenue'],
             },
         },
     },
@@ -187,6 +196,7 @@ grossProfit: gross profit
 operatingIncome: operating profit or profit from operations
 netIncome: profit attributable to ordinary shareholders (owners of the parent)
 eps: diluted earnings per share (basic when diluted is not shown)
+epsBasic: basic earnings per share
 dps: ordinary dividend per share declared for the period
 totalAssets / totalLiabilities: totals from the balance sheet
 currentAssets / currentLiabilities: totals, when the balance sheet splits current and non-current
@@ -198,7 +208,12 @@ capex: purchases of property, plant, equipment and intangible assets (as a posit
 interestExpense: finance costs (as a positive number)
 dividendsPaid: dividends paid to ordinary shareholders in the cash flow statement (as a positive number)
 depreciation: depreciation and amortisation
-shares: weighted average number of shares in issue, as printed; say its scale with sharesUnit (often thousands or millions)`;
+buybacks: cash paid to buy back the company's own shares (as a positive number)
+incomeTax: income tax expense (as a positive number)
+pretaxIncome: profit before tax
+shares: weighted average number of shares in issue, as printed; say its scale with sharesUnit (often thousands or millions)
+
+segments: if the pages show revenue by business segment for the CURRENT period, list each segment's name and revenue (same scale as other amounts); otherwise leave it empty.`;
 
 // Thrown when Gemini is overloaded or rate-limited, so the document can be retried later
 export class GeminiBusyError extends Error {}
@@ -253,8 +268,9 @@ const STATEMENT_WORDS: [RegExp, number][] = [
     [/dividend/i, 1],
     [/attributable to (ordinary )?(share|equity )holders/i, 2],
     [/headline earnings/i, 2],
+    [/segment(al)? (information|report|analysis)/i, 4],
 ];
-const MAX_PAGES_SENT = 6;
+const MAX_PAGES_SENT = 8;
 const MAX_CHARS_PER_PAGE = 9_000;
 
 // Statement pages are dense with figures; contents and commentary pages mention the same titles but hold few
@@ -303,7 +319,7 @@ export const readReport = async (doc: ReportDocument): Promise<{ periods: Financ
     }
 
     const textOut = await askGemini(key, parts);
-    const parsed = JSON.parse(textOut) as { currency?: string | null; amountsUnit?: string; perShareUnit?: string; sharesUnit?: string; periods?: Record<string, unknown>[] };
+    const parsed = JSON.parse(textOut) as { currency?: string | null; amountsUnit?: string; perShareUnit?: string; sharesUnit?: string; periods?: Record<string, unknown>[]; segments?: { name?: string; revenue?: number }[] | null };
     const scale = { units: 1, thousands: 1e3, millions: 1e6, billions: 1e9 }[parsed.amountsUnit ?? 'units'] ?? 1;
     const perShareScale = parsed.perShareUnit === 'cents' ? 0.01 : 1;
     const sharesScale = { units: 1, thousands: 1e3, millions: 1e6, billions: 1e9 }[parsed.sharesUnit ?? 'units'] ?? 1;
@@ -317,7 +333,7 @@ export const readReport = async (doc: ReportDocument): Promise<{ periods: Financ
         for (const field of PERIOD_FIELDS) {
             const value = p[field];
             if (typeof value !== 'number' || !Number.isFinite(value)) continue;
-            const factor = field === 'eps' || field === 'dps' ? perShareScale : field === 'shares' ? sharesScale : scale;
+            const factor = field === 'eps' || field === 'epsBasic' || field === 'dps' ? perShareScale : field === 'shares' ? sharesScale : scale;
             period[field as PeriodField] = (OUTFLOW_FIELDS.has(field) ? Math.abs(value) : value) * factor as never;
         }
         if (period.operatingCashFlow != null) period.freeCashFlow = period.operatingCashFlow - (period.capex ?? 0);
@@ -325,6 +341,13 @@ export const readReport = async (doc: ReportDocument): Promise<{ periods: Financ
         if (period.totalAssets != null && period.equity != null && period.equity > period.totalAssets) return [];
         return [period];
     });
+
+    // Segment revenue belongs to the latest period in the document
+    const segments = (parsed.segments ?? [])
+        .filter((g): g is { name: string; revenue: number } => typeof g.name === 'string' && typeof g.revenue === 'number' && Number.isFinite(g.revenue) && g.revenue > 0)
+        .map((g) => ({ name: g.name.trim().slice(0, 60), revenue: g.revenue * scale }));
+    const newest = [...periods].sort((a, b) => b.end.localeCompare(a.end))[0];
+    if (newest && segments.length >= 2) newest.segments = segments.slice(0, 10);
 
     return { periods, currency: parsed.currency ?? undefined, pagesRead };
 };

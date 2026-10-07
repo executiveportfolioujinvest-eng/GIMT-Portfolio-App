@@ -12,6 +12,10 @@ const FIELDS: [PeriodField, string[]][] = [
     ['operatingIncome', ['OperatingIncome', 'EBIT']],
     ['netIncome', ['NetIncomeCommonStockholders', 'NetIncome']],
     ['eps', ['DilutedEPS', 'BasicEPS']],
+    ['epsBasic', ['BasicEPS']],
+    ['buybacks', ['RepurchaseOfCapitalStock']],
+    ['incomeTax', ['TaxProvision']],
+    ['pretaxIncome', ['PretaxIncome']],
     ['totalAssets', ['TotalAssets']],
     ['totalLiabilities', ['TotalLiabilitiesNetMinorityInterest']],
     ['currentAssets', ['CurrentAssets']],
@@ -29,7 +33,7 @@ const FIELDS: [PeriodField, string[]][] = [
 ];
 
 // Outflows Yahoo reports as negatives that we keep as positive amounts
-const OUTFLOWS = new Set<PeriodField>(['capex', 'dividendsPaid']);
+const OUTFLOWS = new Set<PeriodField>(['capex', 'dividendsPaid', 'buybacks']);
 
 type Point = { asOfDate: string; reportedValue?: { raw?: number } };
 

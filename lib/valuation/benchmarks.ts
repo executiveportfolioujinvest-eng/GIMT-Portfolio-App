@@ -91,15 +91,19 @@ const computeBenchmarks = async (market: Market): Promise<MarketBenchmarks> => {
         // Ranges among companies that pay a dividend
         dividendYieldP25: quantile(peers.map((p) => p.dividendYield).filter((v): v is number => v != null && v > 0), 0.25),
         dividendYieldP75: quantile(peers.map((p) => p.dividendYield).filter((v): v is number => v != null && v > 0), 0.75),
+        topDividendPayers: [...peers]
+            .filter((p) => (p.dividendYield ?? 0) > 0 && (p.pe ?? 0) > 0)
+            .sort((a, b) => (b.dividendYield ?? 0) - (a.dividendYield ?? 0))
+            .slice(0, 3),
         updatedAt: new Date().toISOString(),
     };
 };
 
 // Cached market figures, recalculated when older than a day
-export const getBenchmarks = async (market: Market): Promise<MarketBenchmarks> => {
+export const getBenchmarks = async (market: Market, force = false): Promise<MarketBenchmarks> => {
     await connectToDatabase();
     const saved = await MarketBenchmark.findOne({ market }).lean();
-    if (saved && Date.now() - new Date(saved.updatedAt).getTime() < MAX_AGE_MS) return saved.data as unknown as MarketBenchmarks;
+    if (!force && saved && Date.now() - new Date(saved.updatedAt).getTime() < MAX_AGE_MS) return saved.data as unknown as MarketBenchmarks;
 
     const fresh = await computeBenchmarks(market);
     await MarketBenchmark.updateOne({ market }, { $set: { data: fresh, updatedAt: new Date() } }, { upsert: true });

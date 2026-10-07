@@ -8,12 +8,13 @@ import type {StatementRow} from "@/lib/valuation/model";
 
 type View = 'annual' | 'toDate' | 'recent';
 
-const ROWS: { key: keyof StatementRow; label: string; perShare?: boolean }[] = [
+const ROWS: { key: keyof StatementRow; label: string; perShare?: boolean; ratio?: boolean }[] = [
     { key: 'revenue', label: 'Revenue' },
     { key: 'grossProfit', label: 'Gross profit' },
     { key: 'operatingIncome', label: 'Operating profit' },
     { key: 'netIncome', label: 'Net profit (to shareholders)' },
-    { key: 'eps', label: 'Earnings per share', perShare: true },
+    { key: 'eps', label: 'Diluted earnings per share', perShare: true },
+    { key: 'epsBasic', label: 'Basic earnings per share', perShare: true },
     { key: 'dps', label: 'Dividend per share', perShare: true },
     { key: 'operatingCashFlow', label: 'Operating cash flow' },
     { key: 'capex', label: 'Capital expenditure' },
@@ -23,6 +24,7 @@ const ROWS: { key: keyof StatementRow; label: string; perShare?: boolean }[] = [
     { key: 'equity', label: 'Shareholders’ equity' },
     { key: 'totalDebt', label: 'Debt' },
     { key: 'cash', label: 'Cash and equivalents' },
+    { key: 'roe', label: 'Return on equity', ratio: true },
 ];
 
 const SOURCE_TAG: Record<string, { short: string; title: string }> = {
@@ -103,8 +105,8 @@ const StatementsPanel = ({ annual, toDate, recent, recentLabel, currency }: {
                                                 <td key={c.label} className="py-2 pl-4 text-right tabular-nums text-gray-100">
                                                     {typeof value === 'number' ? (
                                                         <span className="inline-flex items-center gap-1.5">
-                                                            {row.perShare ? money(value, currency, false) : money(value, currency)}
-                                                            {tag && <span title={tag.title} className="rounded bg-gray-700 px-1 text-[10px] text-gray-400">{tag.short}</span>}
+                                                            {row.ratio ? `${(value * 100).toFixed(1)}%` : row.perShare ? money(value, currency, false) : money(value, currency)}
+                                                            {tag && !row.ratio && <span title={tag.title} className="rounded bg-gray-700 px-1 text-[10px] text-gray-400">{tag.short}</span>}
                                                         </span>
                                                     ) : <span className="text-gray-600">—</span>}
                                                 </td>
