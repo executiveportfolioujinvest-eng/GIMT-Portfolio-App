@@ -33,7 +33,7 @@ const NewsPage = async ({ market }: { market: MarketKey }) => {
         getNewsForStocks(market, watchlist.map((s) => ({ symbol: s.symbol, company: s.company })), 8),
     ]);
 
-    // Local market lives on the LIMT route; global markets on the GMIT route
+    // Local market lives on the LMIT route; global markets on the GMIT route
     const tabs = market === 'global'
         ? [
             { key: 'top' as const, label: 'Top stories' },

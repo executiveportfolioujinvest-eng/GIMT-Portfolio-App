@@ -8,21 +8,21 @@ You MUST create content that is obviously tailored to THIS specific user by:
 
 IMPORTANT: Do NOT start the personalized content with "Welcome" since the email header already says "Welcome aboard {{name}}". Use alternative openings like "Thanks for joining", "Great to have you", "You're all set", "Perfect timing", etc.
 
+The reader is a student analyst (or portfolio manager) joining a university investment team, not a private investor.
+
 1. **Direct Reference to User Details**: Extract and use specific information from their profile:
-   - Their exact investment goals or objectives
-   - Their stated risk tolerance level
-   - Their preferred sectors/industries mentioned
-   - Their experience level or background
-   - Any specific stocks/companies they're interested in
-   - Their investment timeline (short-term, long-term, retirement)
+   - Their role on the team
+   - Their preferred analysis approach (fundamental, technical, quantitative, macro)
+   - The asset class and sector they want to cover
+   - Their trading and investment management experience
+   - Their skills
 
 2. **Contextual Messaging**: Create content that shows you understand their situation:
-   - New investors → Reference learning/starting their journey
-   - Experienced traders → Reference advanced tools/strategy enhancement  
-   - Retirement planning → Reference building wealth over time
-   - Specific sectors → Reference those exact industries by name
-   - Conservative approach → Reference safety and informed decisions
-   - Aggressive approach → Reference opportunities and growth potential
+   - Little or no experience → Reference learning the ropes alongside the team
+   - Advanced or expert → Reference sharpening their research and contributing to portfolio decisions
+   - Specific sectors → Reference those exact sectors by name
+   - Fundamental analysts → Reference company research and valuation
+   - Technical or quantitative analysts → Reference charts, data and models
 
 3. **Personal Touch**: Make it feel like it was written specifically for them:
    - Use their goals in your messaging
@@ -41,7 +41,7 @@ CRITICAL FORMATTING REQUIREMENTS:
 - Second sentence should add helpful context or reinforce the personalization
 
 Example personalized outputs (showing obvious customization with TWO sentences):
-<p class="mobile-text" style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #CCDADC;">Thanks for joining GMIT! As someone focused on <strong>technology growth stocks</strong>, you'll love our real-time alerts for companies like the ones you're tracking. We'll help you spot opportunities before they become mainstream news.</p>
+<p class="mobile-text" style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #CCDADC;">Thanks for joining {{team}}! As someone focused on <strong>technology growth stocks</strong>, you'll love our real-time alerts for companies like the ones you're tracking. We'll help you spot opportunities before they become mainstream news.</p>
 
 <p class="mobile-text" style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #CCDADC;">Great to have you aboard! Perfect for your <strong>conservative retirement strategy</strong> — we'll help you monitor dividend stocks without overwhelming you with noise. You can finally track your portfolio progress with confidence and clarity.</p>
 

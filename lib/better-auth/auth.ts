@@ -23,15 +23,21 @@ const createAuth = (db: MongooseDb) => betterAuth({
     },
     user: {
         additionalFields: {
-            // Portfolio the member belongs to: 'global' (GMIT) or 'local' (LIMT)
+            // Portfolio the member belongs to: 'global' (GMIT) or 'local' (LMIT)
             department: { type: 'string', required: false, defaultValue: 'global', input: true },
             // Position on the team, e.g. executive_global_pm or equity_analyst
             teamRole: { type: 'string', required: false, defaultValue: 'investment_analyst', input: true },
             // Background for the portfolio managers; kept out of the session
             birthday: { type: 'string', required: false, input: true, returned: false },
             education: { type: 'json', required: false, input: true, returned: false },
-            careerGoals: { type: 'string', required: false, input: true, returned: false },
-            yearGoals: { type: 'string', required: false, input: true, returned: false },
+            careerGoals: { type: 'json', required: false, input: true, returned: false },
+            yearGoals: { type: 'json', required: false, input: true, returned: false },
+            skills: { type: 'json', required: false, input: true, returned: false },
+            tradingExperience: { type: 'string', required: false, input: true, returned: false },
+            investmentManagementExperience: { type: 'string', required: false, input: true, returned: false },
+            analysisApproach: { type: 'string', required: false, input: true, returned: false },
+            assetClassFocus: { type: 'string', required: false, input: true, returned: false },
+            coverageSector: { type: 'string', required: false, input: true, returned: false },
             learningGoals: { type: 'string', required: false, input: true, returned: false },
             linkedinUrl: { type: 'string', required: false, input: true, returned: false },
         },

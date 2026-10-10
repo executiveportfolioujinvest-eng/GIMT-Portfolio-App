@@ -2,7 +2,7 @@ import Link from "next/link";
 import {getSessionUser} from "@/lib/better-auth/session";
 import {canSwitchMarkets, marketHref, MARKETS, type MarketKey} from "@/lib/markets";
 
-// The executive portfolio managers, President and Vice President can move between the Global (GMIT) and Local (LIMT) sections
+// The executive portfolio managers, President and Vice President can move between the Global (GMIT) and Local (LMIT) sections
 const MarketSwitcher = async ({ market, path }: { market: MarketKey; path: string }) => {
     const user = await getSessionUser();
     if (!canSwitchMarkets(user?.teamRole)) return null;

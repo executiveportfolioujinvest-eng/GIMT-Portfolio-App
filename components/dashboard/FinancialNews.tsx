@@ -14,7 +14,7 @@ const DEFAULT_TABS: FeedTab[] = [
 
 type FinancialNewsProps = {
     news: Partial<Record<NewsTab, MarketNewsArticle[]>>;
-    // A tab with an href links to another route (e.g. the LIMT news page) instead of switching feeds
+    // A tab with an href links to another route (e.g. the LMIT news page) instead of switching feeds
     tabs?: FeedTab[];
     maxItems?: number;
     className?: string;

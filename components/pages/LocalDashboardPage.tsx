@@ -14,13 +14,14 @@ import {LOCAL_OVERVIEW_TABS} from "@/lib/markets";
 // A section left alone in its row (the other was hidden by the administrator) takes the full width
 const FULL_ROW = "md:col-span-2 xl:col-span-3";
 
-// LIMT dashboard: the same layout as the global dashboard, built on JSE data
+// LMIT dashboard: the same layout as the global dashboard, built on JSE data
 const LocalDashboardPage = async () => {
     const { hiddenSections, localStocks } = await getDashboardConfig('local');
     const show = (key: string) => !hiddenSections.includes(key);
 
     // The overview panel opens on the first stock of its first sector tab
-    const firstStock = localStocks.find((s) => LOCAL_OVERVIEW_TABS.some((t) => t.sectors.includes(s.sector))) ?? localStocks[0];
+    const firstTab = LOCAL_OVERVIEW_TABS.find((t) => localStocks.some((s) => t.sectors.includes(s.sector)));
+    const firstStock = (firstTab && localStocks.find((s) => firstTab.sectors.includes(s.sector))) ?? localStocks[0];
     const needsQuotes = show('overview') || show('heatmap') || show('quotes');
     const [quotes, history, stories] = await Promise.all([
         needsQuotes ? getJseQuotes() : {},

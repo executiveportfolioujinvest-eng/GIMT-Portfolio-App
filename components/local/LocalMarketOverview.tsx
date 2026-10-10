@@ -3,11 +3,12 @@
 import {useEffect, useMemo, useRef, useState, useTransition} from "react";
 import PriceChart from "@/components/charts/PriceChart";
 import StockLogo from "@/components/StockLogo";
-import {getPriceHistory} from "@/lib/actions/yahoo.actions";
+import {getChartSeries} from "@/lib/actions/yahoo.actions";
 import {LOCAL_OVERVIEW_TABS, type LocalStock} from "@/lib/markets";
 import {cn, formatChangePercent, formatChangeValue, formatPrice, getChangeColorClass} from "@/lib/utils";
 
-const RANGES: HistoryRange[] = ['1D', '1M', '1Y', '5Y'];
+// Daily bars for the long ranges, back to 2000 for most JSE shares
+const RANGES: ChartRange[] = ['1D', '1M', '1Y', '5Y', 'MAX'];
 // JSE take on TradingView's Market Overview widget: sector tabs, a price chart and the sector's stocks
 const LocalMarketOverview = ({ stocks: allStocks, quotes, initialHistory }: { stocks: LocalStock[]; quotes: Record<string, MarketQuote | null>; initialHistory: PriceHistory }) => {
     // Sector tabs with no stocks in the administrator's JSE list are left out
@@ -15,7 +16,7 @@ const LocalMarketOverview = ({ stocks: allStocks, quotes, initialHistory }: { st
     const [tabIndex, setTabIndex] = useState(0);
     const stocks = useMemo(() => allStocks.filter((s) => TABS[tabIndex].sectors.includes(s.sector)), [allStocks, TABS, tabIndex]);
     const [selected, setSelected] = useState(stocks[0].symbol);
-    const [range, setRange] = useState<HistoryRange>('1Y');
+    const [range, setRange] = useState<ChartRange>('1Y');
     const [points, setPoints] = useState<PricePoint[]>(initialHistory.points);
     const [isLoading, startTransition] = useTransition();
     const isFirstRender = useRef(true);
@@ -26,7 +27,7 @@ const LocalMarketOverview = ({ stocks: allStocks, quotes, initialHistory }: { st
             return;
         }
         startTransition(async () => {
-            const history = await getPriceHistory(`${selected}.JO`, range);
+            const history = await getChartSeries(`${selected}.JO`, range);
             setPoints(history.points);
         });
     }, [selected, range]);
@@ -47,7 +48,7 @@ const LocalMarketOverview = ({ stocks: allStocks, quotes, initialHistory }: { st
             </div>
 
             <div className={cn("px-2 transition-opacity", isLoading && "opacity-50")}>
-                <PriceChart points={points} height={220} intraday={range === '1D'} />
+                <PriceChart points={points} height={220} intraday={range === '1D' || range === '1M'} />
             </div>
 
             <div className="flex gap-1 px-3 py-2">

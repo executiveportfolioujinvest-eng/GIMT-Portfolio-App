@@ -1,7 +1,7 @@
 import TradingViewWidget from "@/components/TradingViewWidget";
 import WatchlistButton from "@/components/WatchlistButton";
 import StockTabs from "@/components/stock/StockTabs";
-import PriceChart from "@/components/charts/PriceChart";
+import ProChart from "@/components/charts/ProChart";
 import NewsList from "@/components/dashboard/NewsList";
 import {
   SYMBOL_INFO_WIDGET_CONFIG,
@@ -13,7 +13,7 @@ import {
 } from "@/lib/constants";
 import { getCompanyProfile } from "@/lib/actions/finnhub.actions";
 import { isStockInWatchlist } from "@/lib/actions/watchlist.actions";
-import { getPriceHistory } from "@/lib/actions/yahoo.actions";
+import { getChartSeries } from "@/lib/actions/yahoo.actions";
 import { getStockNews } from "@/lib/actions/news.actions";
 import { type MarketKey } from "@/lib/markets";
 import { findLocalStock } from "@/lib/dashboard-config";
@@ -90,9 +90,8 @@ const StatRow = ({ label, value }: { label: string; value: string }) => (
 // Same layout for JSE stocks, drawn from Yahoo Finance data since TradingView embeds carry no JSE data
 const LocalAnalysis = async ({ symbol }: { symbol: string }) => {
   const known = await findLocalStock(symbol);
-  const [year, fiveYear, isInWatchlist] = await Promise.all([
-    getPriceHistory(`${symbol}.JO`, '1Y'),
-    getPriceHistory(`${symbol}.JO`, '5Y'),
+  const [year, isInWatchlist] = await Promise.all([
+    getChartSeries(`${symbol}.JO`, '1Y'),
     isStockInWatchlist(symbol, 'local'),
   ]);
   const quote = year.quote;
@@ -120,13 +119,8 @@ const LocalAnalysis = async ({ symbol }: { symbol: string }) => {
         </div>
 
         <div className="dash-panel">
-          <h3 className="mb-4 font-semibold text-gray-100">{symbol} &bull; 1Y &bull; Daily candles</h3>
-          <PriceChart points={year.points} variant="candles" height={520} showVolume />
-        </div>
-
-        <div className="dash-panel">
-          <h3 className="mb-4 font-semibold text-gray-100">{symbol} &bull; 5Y &bull; Weekly</h3>
-          <PriceChart points={fiveYear.points} height={420} />
+          <ProChart yahooSymbol={`${symbol}.JO`} label={`${symbol} · JSE`} initialRange="1Y" initialData={year.points} height={560}
+            benchmark={{ yahooSymbol: '^J203.JO', label: 'JSE All Share' }} />
         </div>
       </div>
 

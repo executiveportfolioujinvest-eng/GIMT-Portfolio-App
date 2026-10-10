@@ -256,12 +256,12 @@ export async function getGeneralNews(category: 'general' | 'forex' | 'crypto' | 
   }
 }
 
-export async function getCompanyNews(symbol: string, max = 3): Promise<MarketNewsArticle[]> {
+export async function getCompanyNews(symbol: string, max = 3, days = 7): Promise<MarketNewsArticle[]> {
   const token = getToken();
   if (!token) return [];
 
   try {
-    const range = getDateRange(7);
+    const range = getDateRange(days);
     const url = `${FINNHUB_BASE_URL}/company-news?symbol=${encodeURIComponent(symbol)}&from=${range.from}&to=${range.to}&token=${token}`;
     const articles = await fetchJSON<RawNewsArticle[]>(url, 300);
     return (articles || [])

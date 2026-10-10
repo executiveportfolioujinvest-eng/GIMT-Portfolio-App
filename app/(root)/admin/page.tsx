@@ -32,7 +32,7 @@ export default async function Admin({ searchParams }: { searchParams: Promise<{ 
         <div className="flex flex-col gap-8">
             <div>
                 <h1 className="text-3xl font-bold text-gray-100">Admin Console</h1>
-                <p className="mt-1 text-gray-500">Members, dashboards and announcements for the Global (GMIT) and Local (LIMT) departments</p>
+                <p className="mt-1 text-gray-500">Members, dashboards and announcements for the Global (GMIT) and Local (LMIT) departments</p>
             </div>
 
             <nav className="pill-tabs w-fit" aria-label="Admin sections">

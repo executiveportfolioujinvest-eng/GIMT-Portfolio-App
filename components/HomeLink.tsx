@@ -10,7 +10,7 @@ const HomeLink = ({ className, children }: { className?: string; children: React
     const market = marketFromPathname(pathname);
 
     return (
-        <Link href={marketHref(market, '/')} className={className} aria-label={`GMIT Portfolio ${market === 'local' ? 'local markets ' : ''}home`}>
+        <Link href={marketHref(market, '/')} className={className} aria-label={`${market === 'local' ? 'LMIT' : 'GMIT'} Portfolio home`}>
             {children}
         </Link>
     )

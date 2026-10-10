@@ -5,6 +5,8 @@ import { Watchlist } from '@/database/models/watchlist.model';
 import { AlertModel } from '@/database/models/alert.model';
 import { PortfolioProposal } from '@/database/models/portfolio-proposal.model';
 import { isDepartment, isLeadershipRole } from '@/lib/markets';
+import { emailSettingsFor } from '@/lib/email-preferences';
+import { isExperienceLevel, readList } from '@/lib/member-profile';
 
 // Server-side helpers for creating and removing accounts (used by the profile page and administrator console)
 
@@ -44,9 +46,16 @@ export const toProfileView = (u: Record<string, unknown>): MyProfileView => ({
     ...toMemberView(u),
     birthday: typeof u.birthday === 'string' ? u.birthday : undefined,
     education: parseEducation(u.education),
-    careerGoals: typeof u.careerGoals === 'string' ? u.careerGoals : undefined,
-    yearGoals: typeof u.yearGoals === 'string' ? u.yearGoals : undefined,
+    careerGoals: readList(u.careerGoals),
+    yearGoals: readList(u.yearGoals),
+    skills: readList(u.skills),
+    tradingExperience: isExperienceLevel(u.tradingExperience) ? u.tradingExperience : undefined,
+    investmentManagementExperience: isExperienceLevel(u.investmentManagementExperience) ? u.investmentManagementExperience : undefined,
+    analysisApproach: typeof u.analysisApproach === 'string' ? u.analysisApproach : undefined,
+    assetClassFocus: typeof u.assetClassFocus === 'string' ? u.assetClassFocus : undefined,
+    coverageSector: typeof u.coverageSector === 'string' ? u.coverageSector : undefined,
     learningGoals: typeof u.learningGoals === 'string' ? u.learningGoals : undefined,
+    emailSettings: emailSettingsFor(u),
 });
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

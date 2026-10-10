@@ -1,8 +1,7 @@
-import Image from "next/image";
 import NavItems from "@/components/NavItems";
 import UserDropdown from "@/components/UserDropdown";
 import MobileNav from "@/components/MobileNav";
-import RollText from "@/components/RollText";
+import TeamLogo from "@/components/TeamLogo";
 import HomeLink from "@/components/HomeLink";
 import {searchStocks} from "@/lib/actions/finnhub.actions";
 import {canAccessMarket, isAdminRole} from "@/lib/markets";
@@ -24,10 +23,7 @@ const Header = async ({ user }: { user: User }) => {
             <div className="container">
                 <div className="nav-bar">
                     <HomeLink className="nav-logo">
-                        <Image src="/assets/icons/gmit-mark.svg" alt="" width={28} height={31} className="h-[26px] w-auto" priority />
-                        <RollText className="h-4">
-                            <Image src="/assets/icons/gmit-wordmark.svg" alt="GMIT Portfolio" width={149} height={19} className="block h-4 w-auto" priority />
-                        </RollText>
+                        <TeamLogo department={user.department} />
                     </HomeLink>
 
                     <div className="hidden md:flex items-center gap-6">

@@ -18,7 +18,7 @@ type NavItemsProps = {
 
 const NavItems = ({ initialStocks, initialLocalStocks, showAdmin = false, className }: NavItemsProps) => {
     const pathname = usePathname()
-    // Links stay inside the Local Markets (LIMT) section while you're in it
+    // Links stay inside the Local Markets (LMIT) section while you're in it
     const market = marketFromPathname(pathname)
 
     const isActive = (path: string) => {

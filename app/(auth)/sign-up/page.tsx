@@ -1,23 +1,102 @@
 'use client';
 
 import {useEffect, useMemo, useState} from "react";
-import {Controller, useFieldArray, useForm, useWatch} from "react-hook-form";
+import {Controller, useFieldArray, useForm, useWatch, type Control, type FieldErrors, type UseFormClearErrors, type UseFormRegister} from "react-hook-form";
 import {Plus, Trash2} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Label} from "@/components/ui/label";
 import InputField from "@/components/forms/InputField";
+import {Input} from "@/components/ui/input";
 import SelectField from "@/components/forms/SelectField";
 import TextareaField from "@/components/forms/TextareaField";
 import UniversitySelect from "@/components/forms/UniversitySelect";
 import BirthdayPicker from "@/components/forms/BirthdayPicker";
-import {INVESTMENT_GOALS, PREFERRED_INDUSTRIES, RISK_TOLERANCE_OPTIONS} from "@/lib/constants";
+import ExperienceScale from "@/components/forms/ExperienceScale";
 import {DEPARTMENT_OPTIONS, OVERSIGHT_ROLES, ROLE_OPTIONS, roleFitsDepartment} from "@/lib/markets";
-import {emptyEducation, GOAL_MAX_LENGTH, MAX_EDUCATION_ENTRIES, normalizeLinkedInUrl, YEAR_OF_STUDY_OPTIONS} from "@/lib/member-profile";
+import {
+    ANALYSIS_APPROACH_OPTIONS,
+    ASSET_CLASS_OPTIONS,
+    COVERAGE_SECTOR_OPTIONS,
+    emptyEducation,
+    GOAL_MAX_LENGTH,
+    LIST_ITEM_MAX_LENGTH,
+    MAX_EDUCATION_ENTRIES,
+    MAX_LIST_ITEMS,
+    normalizeLinkedInUrl,
+    YEAR_OF_STUDY_OPTIONS,
+} from "@/lib/member-profile";
 import {CountrySelectField} from "@/components/forms/CountrySelectField";
 import FooterLink from "@/components/forms/FooterLink";
 import {getFilledLeadershipRoles, signUpWithEmail} from "@/lib/actions/auth.actions";
 import {useRouter} from "next/navigation";
 import {toast} from "sonner";
+
+// Career goals, goals for the year and skills are entered one at a time, like education entries
+type ListItem = { value: string };
+type ListName = 'careerGoals' | 'yearGoals' | 'skills';
+type SignUpFormValues = Omit<SignUpFormData, ListName> & Record<ListName, ListItem[]>;
+
+const ListSection = ({ name, label, addLabel, itemLabel, placeholder, emptyMessage, control, register, errors, clearErrors }: {
+    name: ListName;
+    label: string;
+    addLabel: string;
+    itemLabel: string;
+    placeholder: string;
+    emptyMessage: string;
+    control: Control<SignUpFormValues>;
+    register: UseFormRegister<SignUpFormValues>;
+    errors: FieldErrors<SignUpFormValues>;
+    clearErrors: UseFormClearErrors<SignUpFormValues>;
+}) => {
+    const { fields, append, remove } = useFieldArray({ control, name, rules: { validate: (items) => items.length > 0 || emptyMessage } });
+    const listErrors = errors[name];
+
+    return (
+        <div className="space-y-3">
+            <Label className="form-label">{label}</Label>
+
+            {fields.map((item, index) => (
+                <div key={item.id} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                        <Input
+                            aria-label={`${itemLabel} ${index + 1}`}
+                            placeholder={placeholder}
+                            maxLength={LIST_ITEM_MAX_LENGTH}
+                            className="form-input flex-1"
+                            {...register(`${name}.${index}.value`, {
+                                validate: (v) => !!v.trim() || `Enter the ${itemLabel.toLowerCase()} or remove it`,
+                            })}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => remove(index)}
+                            aria-label={`Remove ${itemLabel.toLowerCase()} ${index + 1}`}
+                            className="flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-gray-600 text-gray-500 transition-colors hover:border-red-400 hover:text-red-400"
+                        >
+                            <Trash2 className="h-4 w-4" />
+                        </button>
+                    </div>
+                    {listErrors?.[index]?.value && <p className="text-sm text-red-500">{listErrors[index].value.message}</p>}
+                </div>
+            ))}
+
+            {fields.length < MAX_LIST_ITEMS && (
+                <button
+                    type="button"
+                    onClick={() => {
+                        append({ value: '' });
+                        // The list isn't empty any more
+                        if (listErrors?.root) clearErrors(name);
+                    }}
+                    className="flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-gray-600 text-gray-400 transition-colors hover:border-blue-500 hover:text-blue-400"
+                >
+                    <Plus className="h-4 w-4" /> {addLabel}
+                </button>
+            )}
+            {listErrors?.root?.message && <p className="text-sm text-red-500">{listErrors.root.message}</p>}
+        </div>
+    );
+};
 
 const SignUp = () => {
     const router = useRouter()
@@ -27,22 +106,26 @@ const SignUp = () => {
         control,
         getValues,
         setValue,
+        clearErrors,
         formState: { errors, isSubmitting },
-    } = useForm<SignUpFormData>({
+    } = useForm<SignUpFormValues>({
         defaultValues: {
             fullName: '',
             email: '',
             password: '',
             department: '' as SignUpFormData['department'],
             teamRole: '' as TeamRole,
-            country: 'US',
-            investmentGoals: 'Growth',
-            riskTolerance: 'Medium',
-            preferredIndustry: 'Technology',
+            country: 'ZA',
+            analysisApproach: '',
+            assetClassFocus: '',
+            coverageSector: '',
+            tradingExperience: '' as ExperienceLevel,
+            investmentManagementExperience: '' as ExperienceLevel,
             birthday: '',
             education: [emptyEducation()],
-            careerGoals: '',
-            yearGoals: '',
+            careerGoals: [],
+            yearGoals: [],
+            skills: [],
             learningGoals: '',
             linkedinUrl: '',
         },
@@ -77,7 +160,9 @@ const SignUp = () => {
         if (current && !roleOptions.some((r) => r.value === current)) setValue('teamRole', '' as TeamRole);
     }, [roleOptions, getValues, setValue]);
 
-    const onSubmit = async (data: SignUpFormData) => {
+    const onSubmit = async (values: SignUpFormValues) => {
+        const list = (items: ListItem[]) => items.map((i) => i.value.trim()).filter(Boolean);
+        const data: SignUpFormData = { ...values, careerGoals: list(values.careerGoals), yearGoals: list(values.yearGoals), skills: list(values.skills) };
         try {
             const result = await signUpWithEmail(data);
             if(result.success) return router.push(result.home ?? '/');
@@ -152,33 +237,51 @@ const SignUp = () => {
                 />
 
                 <SelectField
-                    name="investmentGoals"
-                    label="Investment Goals"
-                    placeholder="Select your investment goal"
-                    options={INVESTMENT_GOALS}
+                    name="analysisApproach"
+                    label="Preferred Analysis Approach"
+                    placeholder="How do you like to analyse markets?"
+                    options={ANALYSIS_APPROACH_OPTIONS}
                     control={control}
-                    error={errors.investmentGoals}
+                    error={errors.analysisApproach}
                     required
                 />
 
                 <SelectField
-                    name="riskTolerance"
-                    label="Risk Tolerance"
-                    placeholder="Select your risk level"
-                    options={RISK_TOLERANCE_OPTIONS}
+                    name="assetClassFocus"
+                    label="Asset Class Focus"
+                    placeholder="Which asset class do you focus on?"
+                    options={ASSET_CLASS_OPTIONS}
                     control={control}
-                    error={errors.riskTolerance}
+                    error={errors.assetClassFocus}
                     required
                 />
 
                 <SelectField
-                    name="preferredIndustry"
-                    label="Preferred Industry"
-                    placeholder="Select your preferred industry"
-                    options={PREFERRED_INDUSTRIES}
+                    name="coverageSector"
+                    label="Sector You’d Like to Cover"
+                    placeholder="Select a sector"
+                    options={COVERAGE_SECTOR_OPTIONS}
                     control={control}
-                    error={errors.preferredIndustry}
+                    error={errors.coverageSector}
                     required
+                />
+
+                <Controller
+                    name="tradingExperience"
+                    control={control}
+                    rules={{ required: 'Rate your trading experience' }}
+                    render={({ field }) => (
+                        <ExperienceScale id="tradingExperience" label="Trading Experience" value={field.value} onChange={field.onChange} error={errors.tradingExperience?.message} />
+                    )}
+                />
+
+                <Controller
+                    name="investmentManagementExperience"
+                    control={control}
+                    rules={{ required: 'Rate your investment management experience' }}
+                    render={({ field }) => (
+                        <ExperienceScale id="investmentManagementExperience" label="Investment Management Experience" value={field.value} onChange={field.onChange} error={errors.investmentManagementExperience?.message} />
+                    )}
                 />
 
                 <div className="space-y-1 border-t border-gray-600 pt-6">
@@ -257,24 +360,30 @@ const SignUp = () => {
                     </button>
                 )}
 
-                <TextareaField
+                <ListSection
                     name="careerGoals"
                     label="Career Goals"
-                    placeholder="Where do you see your career heading?"
+                    addLabel="Add a career goal"
+                    itemLabel="Career goal"
+                    placeholder="eg: Become a CFA charterholder"
+                    emptyMessage="Add at least one career goal"
+                    control={control}
                     register={register}
-                    error={errors.careerGoals}
-                    maxLength={GOAL_MAX_LENGTH}
-                    validation={{ required: 'Tell us your career goals', validate: (v) => !!String(v).trim() || 'Tell us your career goals' }}
+                    errors={errors}
+                    clearErrors={clearErrors}
                 />
 
-                <TextareaField
+                <ListSection
                     name="yearGoals"
                     label="Goals for This Year"
-                    placeholder="What do you want to achieve this year?"
+                    addLabel="Add a goal for this year"
+                    itemLabel="Goal"
+                    placeholder="eg: Pitch two stocks to the portfolio committee"
+                    emptyMessage="Add at least one goal for this year"
+                    control={control}
                     register={register}
-                    error={errors.yearGoals}
-                    maxLength={GOAL_MAX_LENGTH}
-                    validation={{ required: 'Tell us your goals for this year', validate: (v) => !!String(v).trim() || 'Tell us your goals for this year' }}
+                    errors={errors}
+                    clearErrors={clearErrors}
                 />
 
                 <TextareaField
@@ -309,6 +418,24 @@ const SignUp = () => {
                         required: 'LinkedIn profile is required',
                         validate: (v) => !!normalizeLinkedInUrl(v) || 'Enter your LinkedIn profile link, e.g. https://www.linkedin.com/in/your-name',
                     }}
+                />
+
+                <div className="space-y-1 border-t border-gray-600 pt-6">
+                    <h2 className="text-xl font-bold text-gray-400">Your Skills</h2>
+                    <p className="text-sm text-gray-500">What you bring to the team, eg: Excel modelling, Python, valuation, technical analysis.</p>
+                </div>
+
+                <ListSection
+                    name="skills"
+                    label="Skills"
+                    addLabel="Add a skill"
+                    itemLabel="Skill"
+                    placeholder="eg: Discounted cash flow valuation"
+                    emptyMessage="Add at least one skill"
+                    control={control}
+                    register={register}
+                    errors={errors}
+                    clearErrors={clearErrors}
                 />
 
                 <Button type="submit" disabled={isSubmitting} className="blue-btn w-full mt-5">

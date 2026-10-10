@@ -12,6 +12,7 @@ import { AdminActivity } from '@/database/models/admin-activity.model';
 import { createAccount, deleteAccount, getUserCollection, toObjectId, toProfileView, validateNewAccount } from '@/lib/accounts';
 import { ADMIN_ROLE, canCreateAdministrators, isAdminRole, roleLabel } from '@/lib/markets';
 import { parseBirthday } from '@/lib/member-profile';
+import { canChooseEmails, emailSettingsFor, isEmailAutomation } from '@/lib/email-preferences';
 
 const errorMessage = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
 
@@ -228,5 +229,28 @@ export async function updateMyBirthday(birthday: string) {
         unstable_rethrow(e);
         console.error('updateMyBirthday error:', e);
         return { success: false, error: 'Failed to save your birthday' };
+    }
+}
+
+// Portfolio managers, the President and Vice President switch an email automation on or off for themselves
+export async function updateEmailPreference(key: string, on: boolean) {
+    try {
+        const user = await getSessionUser();
+        const id = user && toObjectId(user.id);
+        if (!id) return { success: false, error: 'You need to be signed in' };
+        if (!canChooseEmails(user.teamRole)) return { success: false, error: 'Your emails are set by your department' };
+        if (!isEmailAutomation(key) || typeof on !== 'boolean') return { success: false, error: 'Unknown email' };
+
+        const users = await getUserCollection();
+        const doc = await users.findOne({ _id: id }, { projection: { department: 1, teamRole: 1, emailPreferences: 1 } });
+        if (!doc || !emailSettingsFor({ department: doc.department, teamRole: doc.teamRole, emailPreferences: doc.emailPreferences }).some((s) => s.key === key)) return { success: false, error: 'That email isn’t available to you' };
+
+        await users.updateOne({ _id: id }, { $set: { [`emailPreferences.${key}`]: on, updatedAt: new Date() } });
+        revalidatePath('/profile');
+        return { success: true };
+    } catch (e) {
+        unstable_rethrow(e);
+        console.error('updateEmailPreference error:', e);
+        return { success: false, error: 'Failed to save your email setting' };
     }
 }

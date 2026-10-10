@@ -126,6 +126,26 @@ export async function getNewsForStocks(market: MarketKey, stocks: { symbol: stri
   return newestFirst(merged).slice(0, max);
 }
 
+// Everything published on one stock in the past 24 hours, newest first (for the Portfolio Insider)
+export async function getTodaysStockNews(market: MarketKey, symbol: string, company: string): Promise<MarketNewsArticle[]> {
+  const since = Math.floor(Date.now() / 1000) - 24 * 3600;
+  const articles = market === 'global'
+    ? await safe(getCompanyNews(symbol, 100, 2))
+    : await safe(getGoogleNews(companyQuery(company, 1), 30, symbol));
+  return newestFirst(articles.filter((a) => a.datetime >= since));
+}
+
+// The day's market-wide news for one department's daily summary: global markets, or the JSE and South Africa
+export async function getDailyMarketNews(market: MarketKey, max = 6): Promise<MarketNewsArticle[]> {
+  const articles = market === 'local'
+    ? await safe(getGoogleNews(NEWS_QUERIES.local, 20))
+    : await safe(getGeneralNews('general', 20));
+  // Prefer the past day's stories, topping up with the latest when it's been quiet
+  const since = Math.floor(Date.now() / 1000) - 30 * 3600;
+  const recent = newestFirst(articles).filter((a) => a.datetime >= since);
+  return (recent.length >= 3 ? recent : newestFirst(articles)).slice(0, max);
+}
+
 export async function getStockNews(market: MarketKey, symbol: string, company: string, max = 3): Promise<MarketNewsArticle[]> {
   if (market === 'global') return safe(getCompanyNews(symbol, max));
   return safe(getGoogleNews(companyQuery(company, 14), max, symbol));

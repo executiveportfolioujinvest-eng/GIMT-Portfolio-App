@@ -11,6 +11,8 @@ import { getDashboardConfig, toAnnouncementView } from '@/lib/dashboard-config';
 import { getYahooQuote } from '@/lib/actions/yahoo.actions';
 import { sendAnnouncementEmail } from '@/lib/nodemailer';
 import { recordAdminActivity } from '@/lib/admin-activity';
+import { brandFor } from '@/lib/brand';
+import { wantsEmail } from '@/lib/email-preferences';
 import {
     ADMIN_ROLE,
     DASHBOARD_SECTIONS,
@@ -368,8 +370,11 @@ export async function postAnnouncement(input: { audience: string; title: string;
         // The President and Vice President ('both') hear about every department
         const departments = audience === 'both' ? ['global', 'local', 'both'] : [audience, 'both'];
         const recipients = (await (await getUserCollection())
-            .find({ department: { $in: departments }, teamRole: { $ne: ADMIN_ROLE }, email: { $exists: true } }, { projection: { email: 1 } })
-            .toArray()).map((u) => String(u.email));
+            .find({ department: { $in: departments }, teamRole: { $ne: ADMIN_ROLE }, email: { $exists: true } }, { projection: { email: 1, department: 1, teamRole: 1, emailPreferences: 1 } })
+            .toArray())
+            // Portfolio managers, the President and Vice President can switch announcement emails off
+            .filter((u) => wantsEmail({ department: u.department, teamRole: u.teamRole, emailPreferences: u.emailPreferences }, 'announcements'))
+            .map((u) => ({ email: String(u.email), brand: brandFor({ department: u.department, teamRole: u.teamRole }) }));
 
         if (recipients.length === 0) return { success: true, message: 'Posted. No members to email yet.' };
         try {

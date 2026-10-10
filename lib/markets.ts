@@ -1,4 +1,4 @@
-// Global Markets (GMIT) and Local Markets (LIMT) run the same app with jurisdiction-specific data.
+// Global Markets (GMIT) and Local Markets (LMIT) run the same app with jurisdiction-specific data.
 // Global uses Finnhub + TradingView (US coverage); local uses Yahoo Finance + Google News (JSE coverage),
 // because TradingView embeds and Finnhub's free plan don't carry JSE data.
 
@@ -61,7 +61,7 @@ export const LOCAL_STOCKS: LocalStock[] = [
     { symbol: 'REM', name: 'Remgro Limited', sector: 'Industrials' },
 ];
 
-// Sector tabs on the LIMT Market Overview panel
+// Sector tabs on the LMIT Market Overview panel
 export const LOCAL_OVERVIEW_TABS: { label: string; sectors: string[] }[] = [
     { label: 'Financials', sectors: ['Financials'] },
     { label: 'Resources', sectors: ['Resources'] },
@@ -115,7 +115,7 @@ export const MARKETS: Record<MarketKey, MarketConfig> = {
     },
     local: {
         key: 'local',
-        team: 'LIMT',
+        team: 'LMIT',
         teamName: 'Local Markets Investment Team',
         label: 'Local market',
         basePath: '/local',

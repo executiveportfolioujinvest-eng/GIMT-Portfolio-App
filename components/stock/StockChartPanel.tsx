@@ -1,12 +1,10 @@
 'use client';
 
-import {useEffect, useRef, useState, useTransition} from "react";
+import {useState} from "react";
 import TradingViewWidget from "@/components/TradingViewWidget";
-import PriceChart from "@/components/charts/PriceChart";
-import {getPriceHistory} from "@/lib/actions/yahoo.actions";
+import ProChart from "@/components/charts/ProChart";
 import {STOCK_OVERVIEW_CHART_CONFIG} from "@/lib/constants";
 import type {MarketKey} from "@/lib/markets";
-import {cn} from "@/lib/utils";
 
 const RANGES: HistoryRange[] = ['1D', '5D', '1M', '1Y'];
 
@@ -20,22 +18,7 @@ type StockChartPanelProps = {
 // Price header + range tabs + candlestick chart for the stock overview page
 const StockChartPanel = ({ market, symbol, header, initialHistory }: StockChartPanelProps) => {
     const [range, setRange] = useState<HistoryRange>('1D');
-    const [points, setPoints] = useState<PricePoint[]>(initialHistory?.points ?? []);
-    const [isLoading, startTransition] = useTransition();
-    const isFirstRender = useRef(true);
-
-    // JSE prices come from Yahoo Finance (TradingView embeds have no JSE data)
-    useEffect(() => {
-        if (market !== 'local') return;
-        if (isFirstRender.current) {
-            isFirstRender.current = false;
-            return;
-        }
-        startTransition(async () => {
-            const history = await getPriceHistory(`${symbol}.JO`, range);
-            setPoints(history.points);
-        });
-    }, [market, symbol, range]);
+    const points = initialHistory?.points ?? [];
 
     const scriptUrl = `https://s3.tradingview.com/external-embedding/embed-widget-`;
 
@@ -43,7 +26,7 @@ const StockChartPanel = ({ market, symbol, header, initialHistory }: StockChartP
         <section className="dash-panel flex h-full flex-col">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-600 pb-5">
                 {header}
-                <div className="pill-tabs" role="group" aria-label="Chart range">
+                {market === 'global' && <div className="pill-tabs" role="group" aria-label="Chart range">
                     {RANGES.map((r) => (
                         <button
                             key={r}
@@ -56,10 +39,10 @@ const StockChartPanel = ({ market, symbol, header, initialHistory }: StockChartP
                             {r}
                         </button>
                     ))}
-                </div>
+                </div>}
             </div>
 
-            <div className={cn("mt-5 flex-1 transition-opacity", isLoading && "opacity-50")}>
+            <div className="mt-5 flex-1">
                 {market === 'global' ? (
                     <TradingViewWidget
                         key={`${symbol}-${range}`}
@@ -69,7 +52,7 @@ const StockChartPanel = ({ market, symbol, header, initialHistory }: StockChartP
                         height={440}
                     />
                 ) : (
-                    <PriceChart points={points} variant="candles" height={440} intraday={range === '1D' || range === '5D'} showVolume />
+                    <ProChart yahooSymbol={`${symbol}.JO`} label={symbol} initialRange="1D" initialData={points} height={420} compact />
                 )}
             </div>
         </section>

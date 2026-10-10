@@ -1,19 +1,20 @@
 import {inngest} from "@/lib/inngest/client";
 import {NEWS_SUMMARY_EMAIL_PROMPT, PERSONALIZED_WELCOME_EMAIL_PROMPT} from "@/lib/inngest/prompts";
-import {sendBirthdayReminderEmail, sendBirthdayWishEmail, sendNewsSummaryEmail, sendPriceAlertEmail, sendWelcomeEmail} from "@/lib/nodemailer";
-import {getAllUsersForNewsEmail, getMembersForBirthdayEmails} from "@/lib/actions/user.actions";
-import { birthdaysOn } from "@/lib/member-profile";
-import { getWatchlistSymbolsByEmail } from "@/lib/actions/watchlist.actions";
-import { getNews, getStockQuote } from "@/lib/actions/finnhub.actions";
+import {sendBirthdayReminderEmail, sendBirthdayWishEmail, sendNewsSummaryEmail, sendPortfolioInsiderEmail, sendPriceAlertEmail, sendWelcomeEmail, type StockNewsGroup} from "@/lib/nodemailer";
+import { ANALYSIS_APPROACH_OPTIONS, ASSET_CLASS_OPTIONS, birthdaysOn, COVERAGE_SECTOR_OPTIONS, EXPERIENCE_LEVELS, optionLabel } from "@/lib/member-profile";
+import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { getYahooQuote } from "@/lib/actions/yahoo.actions";
-import { getMarketNews, getNewsForStocks } from "@/lib/actions/news.actions";
-import { marketForDepartment, MARKETS, roleLabel } from "@/lib/markets";
-import { getLocalStocks } from "@/lib/dashboard-config";
+import { getDailyMarketNews, getTodaysStockNews } from "@/lib/actions/news.actions";
+import { MARKETS, roleLabel, type MarketKey } from "@/lib/markets";
+import { getEmailMembers, getWatchlistStocks } from "@/lib/email-members";
+import { INSIDER_AUTOMATION, NEWS_AUTOMATION, wantsEmail } from "@/lib/email-preferences";
+import { TeamHolding } from "@/database/models/team-holding.model";
 import { advanceCollection } from "@/lib/valuation/collect";
 import { getFormattedTodayDate } from "@/lib/utils";
 import { connectToDatabase } from "@/database/mongoose";
 import { AlertModel } from "@/database/models/alert.model";
 import { ALERT_CHECK_CRON, ALERT_FREQUENCY_MS } from "@/lib/constants";
+import { BRANDS, brandFor } from "@/lib/brand";
 
 export const sendSignUpEmail = inngest.createFunction(
     { id: 'sign-up-email' },
@@ -21,12 +22,18 @@ export const sendSignUpEmail = inngest.createFunction(
     async ({ event, step }) => {
         const userProfile = `
             - Country: ${event.data.country}
-            - Investment goals: ${event.data.investmentGoals}
-            - Risk tolerance: ${event.data.riskTolerance}
-            - Preferred industry: ${event.data.preferredIndustry}
+            - Role: ${roleLabel(event.data.teamRole)}
+            - Preferred analysis approach: ${optionLabel(ANALYSIS_APPROACH_OPTIONS, event.data.analysisApproach) ?? 'not given'}
+            - Asset class focus: ${optionLabel(ASSET_CLASS_OPTIONS, event.data.assetClassFocus) ?? 'not given'}
+            - Sector they'd like to cover: ${optionLabel(COVERAGE_SECTOR_OPTIONS, event.data.coverageSector) ?? 'not given'}
+            - Trading experience: ${optionLabel(EXPERIENCE_LEVELS, event.data.tradingExperience) ?? 'not given'}
+            - Investment management experience: ${optionLabel(EXPERIENCE_LEVELS, event.data.investmentManagementExperience) ?? 'not given'}
+            - Skills: ${Array.isArray(event.data.skills) && event.data.skills.length ? event.data.skills.join(', ') : 'not given'}
         `
 
-        const prompt = PERSONALIZED_WELCOME_EMAIL_PROMPT.replace('{{userProfile}}', userProfile)
+        // Each team's members get their own team's logo and name
+        const brand = brandFor(event.data);
+        const prompt = PERSONALIZED_WELCOME_EMAIL_PROMPT.replace('{{userProfile}}', userProfile).replaceAll('{{team}}', BRANDS[brand].team)
 
         const response = await step.ai.infer('generate-welcome-intro', {
             model: step.ai.models.gemini({ model: 'gemini-flash-lite-latest' }),
@@ -43,11 +50,11 @@ export const sendSignUpEmail = inngest.createFunction(
 
         await step.run('send-welcome-email', async () => {
             const part = response.candidates?.[0]?.content?.parts?.[0];
-            const introText = (part && 'text' in part ? part.text : null) || 'Thanks for joining the Global Markets. You now have the tools to track markets, spot opportunities, and make smarter moves — all in one place.'
+            const introText = (part && 'text' in part ? part.text : null) || `Thanks for joining the ${BRANDS[brand].teamName}. You now have the tools to track markets, spot opportunities, and make smarter moves — all in one place.`
 
             const { data: { email, name } } = event;
 
-            return await sendWelcomeEmail({ email, name, intro: introText });
+            return await sendWelcomeEmail({ email, name, intro: introText, brand });
         })
 
         return {
@@ -57,84 +64,114 @@ export const sendSignUpEmail = inngest.createFunction(
     }
 )
 
+// Every afternoon: one summary of each department's market news (global markets, or the JSE and South Africa),
+// summarised once per department and sent to everyone who gets that department's news
 export const sendDailyNewsSummary = inngest.createFunction(
     { id: 'daily-news-summary' },
     [ { event: 'app/send.daily.news' }, { cron: '0 12 * * *' } ],
     async ({ step }) => {
-        // Step #1: Get all users for news delivery
-        const users = await step.run('get-all-users', getAllUsersForNewsEmail)
+        const members = await step.run('get-members', getEmailMembers);
+        let sent = 0;
 
-        if(!users || users.length === 0) return { success: false, message: 'No users found for news email' };
+        for (const market of ['global', 'local'] as MarketKey[]) {
+            const recipients = members.filter((m) => wantsEmail(m, NEWS_AUTOMATION[market]));
+            if (recipients.length === 0) continue;
 
-        // Step #2: For each user, get watchlist symbols -> fetch news (fallback to general)
-        const results = await step.run('fetch-user-news', async () => {
-            const perUser: Array<{ user: UserForNewsEmail; articles: MarketNewsArticle[] }> = [];
-            for (const user of users as UserForNewsEmail[]) {
-                try {
-                    // Local Markets (LIMT) members get JSE news; everyone else gets global news
-                    if (marketForDepartment(user.department) === 'local') {
-                        const symbols = await getWatchlistSymbolsByEmail(user.email, 'local');
-                        const localStocks = await getLocalStocks();
-                        let articles = await getNewsForStocks('local', symbols.map((symbol) => ({ symbol, company: localStocks.find((s) => s.symbol === symbol)?.name ?? symbol })), 6);
-                        if (articles.length === 0) articles = await getMarketNews('local', 'local', 6);
-                        perUser.push({ user, articles });
-                        continue;
-                    }
+            const articles = await step.run(`fetch-${market}-news`, () => getDailyMarketNews(market, 6));
+            if (articles.length === 0) continue;
 
-                    const symbols = await getWatchlistSymbolsByEmail(user.email);
-                    let articles = await getNews(symbols);
-                    // Enforce max 6 articles per user
-                    articles = (articles || []).slice(0, 6);
-                    // If still empty, fallback to general
-                    if (!articles || articles.length === 0) {
-                        articles = await getNews();
-                        articles = (articles || []).slice(0, 6);
-                    }
-                    perUser.push({ user, articles });
-                } catch (e) {
-                    console.error('daily-news: error preparing user news', user.email, e);
-                    perUser.push({ user, articles: [] });
-                }
-            }
-            return perUser;
-        });
+            const response = await step.ai.infer(`summarize-${market}-news`, {
+                model: step.ai.models.gemini({ model: 'gemini-flash-lite-latest' }),
+                body: { contents: [{ role: 'user', parts: [{ text: NEWS_SUMMARY_EMAIL_PROMPT.replace('{{newsData}}', JSON.stringify(articles, null, 2)) }] }] },
+            });
+            const part = response.candidates?.[0]?.content?.parts?.[0];
+            const newsContent = part && 'text' in part ? part.text : null;
+            if (!newsContent) continue;
 
-        // Step #3: (placeholder) Summarize news via AI
-        const userNewsSummaries: { user: UserForNewsEmail; newsContent: string | null }[] = [];
+            sent += await step.run(`send-${market}-news`, async () => {
+                const date = getFormattedTodayDate();
+                const results = await Promise.allSettled(recipients.map((m) =>
+                    sendNewsSummaryEmail({ email: m.email, date, newsContent, brand: brandFor(m), market })
+                ));
+                results.forEach((r, i) => { if (r.status === 'rejected') console.error('daily-news: send failed', recipients[i].id, r.reason); });
+                return results.filter((r) => r.status === 'fulfilled').length;
+            });
+        }
 
-        for (const { user, articles } of results) {
-                try {
-                    const prompt = NEWS_SUMMARY_EMAIL_PROMPT.replace('{{newsData}}', JSON.stringify(articles, null, 2));
+        return { success: true, message: `${sent} daily news email(s) sent` };
+    }
+)
 
-                    const response = await step.ai.infer(`summarize-news-${user.email}`, {
-                        model: step.ai.models.gemini({ model: 'gemini-flash-lite-latest' }),
-                        body: {
-                            contents: [{ role: 'user', parts: [{ text:prompt }]}]
-                        }
+// Runs a function over items a few at a time, so news requests stay within the providers' rate limits
+const mapLimit = async <T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> => {
+    const out: R[] = new Array(items.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (next < items.length) {
+            const i = next++;
+            out[i] = await fn(items[i]);
+        }
+    }));
+    return out;
+};
+
+const stockNews = (market: MarketKey, stocks: { symbol: string; company: string }[]): Promise<StockNewsGroup[]> =>
+    mapLimit(stocks, 4, async (s) => ({ ...s, articles: await getTodaysStockNews(market, s.symbol, s.company).catch(() => []) }));
+
+// Every evening (18:00 South African time, after the JSE closes): the GMIT and LMIT Portfolio Insider. Sent for a
+// department while its team portfolio holds shares: the day's news on the holdings, then on each member's starred stocks.
+export const sendPortfolioInsider = inngest.createFunction(
+    { id: 'portfolio-insider' },
+    [ { event: 'app/portfolio.insider' }, { cron: 'TZ=Africa/Johannesburg 0 18 * * *' } ],
+    async ({ step }) => {
+        const members = await step.run('get-members', getEmailMembers);
+        let sent = 0;
+
+        for (const market of ['global', 'local'] as MarketKey[]) {
+            const recipients = members.filter((m) => wantsEmail(m, INSIDER_AUTOMATION[market]));
+            if (recipients.length === 0) continue;
+
+            const holdings = await step.run(`${market}-holdings`, async () => {
+                await connectToDatabase();
+                const items = await TeamHolding.find({ market }, { symbol: 1, company: 1 }).sort({ symbol: 1 }).lean();
+                return items.map((h) => ({ symbol: String(h.symbol), company: String(h.company ?? h.symbol) }));
+            });
+            if (holdings.length === 0) continue;
+
+            const portfolio = await step.run(`${market}-portfolio-news`, () => stockNews(market, holdings));
+
+            // Each recipient's starred stocks, leaving out those the portfolio holds (their news is already above)
+            const held = new Set(holdings.map((h) => h.symbol));
+            // Step results come back through JSON; these are plain strings, so the shape survives as is
+            const watchlists = await step.run(`${market}-watchlists`, () =>
+                Promise.all(recipients.map(async (m) => ({ id: m.id, stocks: await getWatchlistStocks(m.id, market).catch(() => []) })))
+            ) as { id: string; stocks: { symbol: string; company: string }[] }[];
+            const starred = new Map(watchlists.map((w) => [w.id, w.stocks]));
+            const extra = new Map<string, { symbol: string; company: string }>();
+            watchlists.flatMap((w) => w.stocks).forEach((s) => { if (!held.has(s.symbol)) extra.set(s.symbol, s); });
+            const watchlistNews = await step.run(`${market}-watchlist-news`, () => stockNews(market, [...extra.values()]));
+            const newsBySymbol = new Map(watchlistNews.map((g) => [g.symbol, g]));
+
+            sent += await step.run(`send-${market}-insider`, async () => {
+                const date = getFormattedTodayDate();
+                const results = await Promise.allSettled(recipients.map((m) => {
+                    const mine = starred.get(m.id) ?? [];
+                    return sendPortfolioInsiderEmail({
+                        email: m.email,
+                        brand: brandFor(m),
+                        market,
+                        date,
+                        portfolio,
+                        watchlist: mine.flatMap((s) => newsBySymbol.get(s.symbol) ?? []),
+                        starredInPortfolio: mine.filter((s) => held.has(s.symbol)).length,
                     });
+                }));
+                results.forEach((r, i) => { if (r.status === 'rejected') console.error('portfolio-insider: send failed', recipients[i].id, r.reason); });
+                return results.filter((r) => r.status === 'fulfilled').length;
+            });
+        }
 
-                    const part = response.candidates?.[0]?.content?.parts?.[0];
-                    const newsContent = (part && 'text' in part ? part.text : null) || 'No market news.'
-
-                    userNewsSummaries.push({ user, newsContent });
-                } catch (e) {
-                    console.error('Failed to summarize news for : ', user.email);
-                    userNewsSummaries.push({ user, newsContent: null });
-                }
-            }
-
-        // Step #4: (placeholder) Send the emails
-        await step.run('send-news-emails', async () => {
-                await Promise.all(
-                    userNewsSummaries.map(async ({ user, newsContent}) => {
-                        if(!newsContent) return false;
-
-                        return await sendNewsSummaryEmail({ email: user.email, date: getFormattedTodayDate(), newsContent })
-                    })
-                )
-            })
-
-        return { success: true, message: 'Daily news summary emails sent successfully' }
+        return { success: true, message: `${sent} Portfolio Insider email(s) sent` };
     }
 )
 
@@ -196,19 +233,21 @@ export const checkStockAlerts = inngest.createFunction(
 
         // Step #2: Email each user and record the trigger
         await step.run('send-alert-emails', async () => {
-            const users = await getAllUsersForNewsEmail();
-            const emailsById = new Map(users.map((u) => [u.id, u.email]));
+            const users = await getEmailMembers();
+            const usersById = new Map(users.map((u) => [u.id, u]));
             const timestamp = new Date().toLocaleString('en-US', { timeZone: 'UTC', timeZoneName: 'short' });
 
             await connectToDatabase();
             await Promise.all(
                 triggered.map(async (alert) => {
-                    const email = emailsById.get(alert.userId);
-                    if (!email) return;
+                    const user = usersById.get(alert.userId);
+                    if (!user) return;
 
                     try {
-                        await sendPriceAlertEmail({
-                            email,
+                        // The trigger is recorded either way; the email only goes to members who get price alerts
+                        if (wantsEmail(user, 'alerts')) await sendPriceAlertEmail({
+                            email: user.email,
+                            brand: brandFor(user),
                             symbol: alert.symbol,
                             company: alert.company,
                             alertType: alert.alertType,
@@ -238,21 +277,23 @@ export const sendBirthdayEmails = inngest.createFunction(
     { id: 'birthday-emails' },
     [ { event: 'app/birthdays.check' }, { cron: 'TZ=Africa/Johannesburg 0 7 * * *' } ],
     async ({ step }) => {
-        const members = await step.run('find-birthdays', getMembersForBirthdayEmails);
+        const members = await step.run('find-birthdays', getEmailMembers);
         const today = birthdaysOn(new Date());
         const celebrants = members.filter((m) => m.birthday && today.includes(m.birthday));
 
         if (celebrants.length === 0) return { success: true, message: 'No birthdays today' };
 
         await step.run('send-birthday-wishes', async () => {
-            await Promise.all(celebrants.map((m) =>
-                sendBirthdayWishEmail({ email: m.email, name: m.name }).catch((e) => console.error('Birthday wish failed', m.id, e))
+            await Promise.all(celebrants.filter((m) => wantsEmail(m, 'birthdayWish')).map((m) =>
+                sendBirthdayWishEmail({ email: m.email, name: m.name, brand: brandFor(m) }).catch((e) => console.error('Birthday wish failed', m.id, e))
             ));
         });
 
         await step.run('send-birthday-reminders', async () => {
             for (const celebrant of celebrants) {
-                const recipients = members.filter((m) => m.id !== celebrant.id).map((m) => m.email);
+                const recipients = members
+                    .filter((m) => m.id !== celebrant.id && wantsEmail(m, 'birthdayReminders'))
+                    .map((m) => ({ email: m.email, brand: brandFor(m) }));
                 if (recipients.length === 0) continue;
                 await sendBirthdayReminderEmail({ recipients, name: celebrant.name, roleLabel: roleLabel(celebrant.teamRole) })
                     .catch((e) => console.error('Birthday reminder failed', celebrant.id, e));

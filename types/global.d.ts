@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Control, FieldError, FieldValues, Path, RegisterOptions, UseFormRegister } from 'react-hook-form';
 import type { Department, MarketKey } from '@/lib/markets';
+import type { EmailSetting } from '@/lib/email-preferences';
 
 declare global {
     type TeamRole =
@@ -44,13 +45,21 @@ declare global {
         yearOfStudy: YearOfStudy;
     };
 
+    type ExperienceLevel = 'none' | 'beginner' | 'intermediate' | 'advanced' | 'expert';
+
     // Background a member gives at sign-up for the portfolio managers
     type MemberProfile = {
         // Month and day only, 'MM-DD'
         birthday: string;
         education: EducationEntry[];
-        careerGoals: string;
-        yearGoals: string;
+        careerGoals: string[];
+        yearGoals: string[];
+        skills: string[];
+        tradingExperience: ExperienceLevel;
+        investmentManagementExperience: ExperienceLevel;
+        analysisApproach: string;
+        assetClassFocus: string;
+        coverageSector: string;
         learningGoals: string;
         linkedinUrl: string;
     };
@@ -62,9 +71,6 @@ declare global {
         department: Department;
         teamRole: TeamRole;
         country: string;
-        investmentGoals: string;
-        riskTolerance: string;
-        preferredIndustry: string;
     };
 
 
@@ -204,6 +210,9 @@ declare global {
 
     type HistoryRange = '1D' | '5D' | '1M' | '6M' | '1Y' | '5Y';
 
+    // Ranges on the full JSE price chart
+    type ChartRange = '1D' | '5D' | '1M' | '3M' | '6M' | 'YTD' | '1Y' | '5Y' | '10Y' | 'MAX';
+
     type PricePoint = {
         time: number;
         open: number;
@@ -342,6 +351,8 @@ declare global {
     // The signed-in member's own profile page
     type MyProfileView = Partial<MemberProfile> & {
         id: string;
+        // The emails this member gets, and whether they can switch them
+        emailSettings: EmailSetting[];
         name: string;
         email: string;
         department: Department;

@@ -13,18 +13,26 @@ import {homeHref, isAdminRole, LEADERSHIP_ROLES} from "@/lib/markets";
 const authErrorMessage = (e: unknown, fallback: string) =>
     e instanceof APIError ? (e.body?.message ?? e.message ?? fallback) : fallback;
 
-export const signUpWithEmail = async ({ email, password, fullName, department, teamRole, country, investmentGoals, riskTolerance, preferredIndustry, birthday, education, careerGoals, yearGoals, learningGoals, linkedinUrl }: SignUpFormData) => {
+export const signUpWithEmail = async ({ email, password, fullName, department, teamRole, country, ...profile }: SignUpFormData) => {
     try {
         const auth = await getAuth();
         const response = await auth.api.signUpEmail({
-            body: { email, password, name: fullName, department, teamRole, birthday, education, careerGoals, yearGoals, learningGoals, linkedinUrl }
+            body: { email, password, name: fullName, department, teamRole, ...profile }
         })
 
         if(response) {
             // A failed welcome-email event shouldn't fail the sign-up itself
             await inngest.send({
                 name: 'app/user.created',
-                data: { email, name: fullName, country, investmentGoals, riskTolerance, preferredIndustry }
+                data: {
+                    email, name: fullName, department, teamRole, country,
+                    analysisApproach: profile.analysisApproach,
+                    assetClassFocus: profile.assetClassFocus,
+                    coverageSector: profile.coverageSector,
+                    tradingExperience: profile.tradingExperience,
+                    investmentManagementExperience: profile.investmentManagementExperience,
+                    skills: profile.skills,
+                }
             }).catch((e) => console.error('Failed to queue welcome email', e))
         }
 
